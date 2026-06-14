@@ -1,0 +1,24 @@
+# ── PyInstaller ───────────────────────────────────────────────
+dist/
+build/
+*.spec
+
+# ── Flatpak build ─────────────────────────────────────────────
+yijing_fp/
+yijing_repo/
+*.flatpak
+
+# ── Python ────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# ── OS / editor cruft ─────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/

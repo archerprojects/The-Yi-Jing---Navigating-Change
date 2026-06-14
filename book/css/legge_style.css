@@ -1,0 +1,8 @@
+/*Hoja de estilo para presentar los comentarios*/
+body {background-color: #D0DFEC}
+p.title {color:#080D45;font-family:sans-serif;font-size:140%;}
+p.composition{color:#3679AD;font-family:sans-serif;font-size:100%;}
+p.abstract{color:black;font-family:sans-serif;font-size:100%;}
+p.comment{color:black;font-family:sans-serif;font-size:100%;}
+p.sec{color:#3679AD;font-family:sans-serif;font-size:130%;}
+p.text{color:#00044A;font-family:sans-serif;font-size:120%;}
