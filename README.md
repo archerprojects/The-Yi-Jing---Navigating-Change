@@ -1,7 +1,8 @@
 # The YiJing (I Ching) — Navigating Change
 
 A desktop oracle for consulting the YiJing (I Ching) — 易經, "The Book of Changes" —
-Cast a hexagram by coin or yarrow stalk, read it across three classic translations,
+Cast a hexagram by coin or yarrow stalk, read it across five sources —
+three classic translations, the original Chinese text, and the Ten Wings —
 and keep a private reading journal — all in one offline Linux application.
 
 **Version:** 1.0
@@ -46,7 +47,9 @@ network connection or any external service.
 
 ## Screenshots
 
-*(Add screenshots here once the repository is public.)*
+![](screenshots/YiJing_1.jpg)
+![](screenshots/YiJing_2.jpg)
+![](screenshots/YiJing_3.jpg)
 
 ---
 
