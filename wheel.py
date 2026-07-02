@@ -39,10 +39,8 @@ class WheelWidget(QWidget):
     selected = Signal(int)     # wedge clicked
     landed   = Signal(int)     # spin finished on this hexagram
 
-    def __init__(self, hex_names, hex_chars, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self._names = hex_names
-        self._chars = hex_chars
         self._angle = 0.0          # wheel rotation, degrees
         self._vel = 0.0            # angular velocity, deg/tick
         self._hover_hid = 0

@@ -3,13 +3,13 @@ The YiJing (I Ching) — Navigating Change
 
 Python/PySide6 port of iching-0.2 by Jean Pierre Charalambos (2002).
 Coin casting engine from pyChing by Stephen M. Gava (1999-2006).
-Translations: Richard Wilhelm (1923), James Legge (1899).
+Translations: Richard Wilhelm (1924), James Legge (1899).
 Port and redesign: rjv, 2026 — GNU GPL v3
 """
 
 # ── Application Identity ──────────────────────────────────────────────────────
 APP_NAME    = "The YiJing (I Ching) — Navigating Change"
-APP_VER     = "1.0.0"
+APP_VER     = "1.0.1"
 APP_DEV     = "archerprojects"
 APP_CONTACT = "archer.projects@proton.me"
 APP_ID      = "io.archerprojects.YiJingNavigatingChange"
@@ -30,19 +30,32 @@ import sys, os, re
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QStackedWidget,
     QSplitter, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QTextEdit, QTabWidget, QStatusBar,
-    QFileDialog, QMessageBox, QLineEdit, QFrame, QSizePolicy,
-    QScrollArea, QGridLayout, QDialog,
+    QTabWidget, QStatusBar,
+    QMessageBox, QLineEdit, QFrame, QSizePolicy,
+    QGridLayout, QDialog,
 )
-from PySide6.QtCore import Qt, QTimer, Signal, QObject, QSize
-from PySide6.QtWebEngineCore import QWebEngineSettings
-from PySide6.QtGui import QPainter, QColor, QFont, QPixmap, QPalette, QFontDatabase
+from PySide6.QtCore import Qt, Signal, QObject
+from PySide6.QtGui import QPainter, QColor, QPixmap, QPalette, QFontDatabase
 
 def resource(rel):
     base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base, rel)
 
 BOOK_DIR = resource("book")
+
+_READER_CSS = None
+def _reader_css():
+    """Reader stylesheet, loaded once from book/css/reader.css and injected
+    into every book/study page (legacy <LINK> tags are stripped at load)."""
+    global _READER_CSS
+    if _READER_CSS is None:
+        try:
+            with open(resource(os.path.join("book", "css", "reader.css")),
+                      encoding="utf-8") as f:
+                _READER_CSS = f.read()
+        except Exception:
+            _READER_CSS = ""
+    return _READER_CSS
 
 TRIGRAMS = {
     1:("☰","Qián","Heaven",  "Creative",    "Father",      "Strong",      "乾"),
@@ -67,7 +80,7 @@ HEX_CHARS = {
 HEX_TABLE = {}
 def _build_hex_table():
     data = [
-        (1,1,1),(2,8,8),(3,6,4),(4,7,6),(5,6,1),(6,1,6),(7,6,8),(8,8,6),
+        (1,1,1),(2,8,8),(3,6,4),(4,7,6),(5,6,1),(6,1,6),(7,8,6),(8,6,8),
         (9,5,1),(10,1,2),(11,8,1),(12,1,8),(13,1,3),(14,3,1),(15,8,7),(16,4,8),
         (17,2,4),(18,7,5),(19,8,2),(20,5,8),(21,3,4),(22,7,3),(23,7,8),(24,8,4),
         (25,1,4),(26,7,1),(27,7,4),(28,2,5),(29,6,6),(30,3,3),(31,2,7),(32,4,5),
@@ -117,9 +130,10 @@ class HexModel(QObject):
     def sup_id(self): return self._tri_id(self.lines[3:6])
     def _tri_id(self,three):
         norm=[7 if v in (7,9) else 8 for v in three]
-        tmap={(True,True,True):1,(False,True,True):2,(True,False,True):3,
-              (False,False,True):4,(True,True,False):5,(False,True,False):6,
-              (True,False,False):7,(False,False,False):8}
+        # keys are (is_yang) BOTTOM-TO-TOP: index 0 = bottom line
+        tmap={(True,True,True):1,(True,True,False):2,(True,False,True):3,
+              (True,False,False):4,(False,True,True):5,(False,True,False):6,
+              (False,False,True):7,(False,False,False):8}
         return tmap.get(tuple(v==7 for v in norm),1)
     def hex_id(self): return HEX_TABLE.get((self.sup_id(),self.inf_id()),1)
     def has_moving(self): return any(v in (6,9) for v in self.lines)
@@ -345,15 +359,6 @@ class HexDisplay(QWidget):
             self._rel_read_btn.clicked.connect(lambda: self.read_hex.emit(rid))
         self._emit_width()
 
-    def set_line_partial(self, line_idx, value):
-        self._prim_lines[5 - line_idx].set_value(value)
-        hid = self.hex.hex_id()
-        char = HEX_CHARS.get(hid, "")
-        name = HEX_NAMES.get(hid, "")
-        self._prim_title.setText(self._title_text(char, hid, name))
-        self._fill_trig(self._prim_tri, self.hex.sup_id(), self.hex.inf_id())
-        self._emit_width()
-
     def clear(self):
         self._prim_title.setText("—"); self._rel_title.setText("—")
         for lw in self._prim_lines: lw.clear()
@@ -436,21 +441,7 @@ class BookBrowser(QWidget):
             with open(path,"r",encoding="utf-8",errors="replace") as f: html=f.read()
         except Exception as e:
             self.browser.setHtml(f"<p style='color:red'>{e}</p>"); return
-        css="""body{background-color:#f8f8f6;font-family:Georgia,serif;
-            font-size:15px;line-height:1.7;margin:16px 24px;}
-            p.title{color:#515150;font-size:1.6em;font-weight:bold;font-style:italic;
-            font-family:'aoyagireisyosimo2','AR PL UKai CN',Georgia,serif;margin-bottom:0.3em;line-height:1.4;}
-            p.composition{color:#515150;font-size:1.1em;font-weight:bold;
-            font-style:italic;margin-top:1em;margin-bottom:0.2em;}
-            p.comment{color:#1a1a1a;font-size:1.0em;margin-top:0.4em;}
-            p.sec{color:#515150;font-size:1.2em;font-weight:bold;
-            font-style:italic;margin-top:1em;}
-            p.text{color:#2a082a;font-size:1.0em;margin-top:0.3em;}
-            .han{font-family:'aoyagireisyosimo2','AR PL UKai CN',serif;font-size:1.8em;
-            vertical-align:middle;margin-right:0.2em;}
-            em{font-style:italic;color:#515150;}a{color:#515150;}
-            blockquote{margin-left:20px;border-left:2px solid #c0c0bc;
-            padding-left:12px;color:#555;}"""
+        css=_reader_css()
         html=re.sub(r'<LINK[^>]*>','',html,flags=re.IGNORECASE)
         html=html.replace("</head>",f"<style>{css}</style></head>",1)
         if path.endswith("_0.html") and f"hex{self._current_hex_id}_0" in path:
@@ -790,6 +781,7 @@ class MainWindow(QMainWindow):
         self._moment_data={}; self._mode=self.MODE_OPENING; self._last_entry_id=None
         self._study_page=None
         self._cast_started=False; self._cast_complete=False
+        self._pending_manual_lines=None
         self._bg_pixmap=QPixmap(resource("opening_image.png"))
         self._build_ui(); self._build_menus()
         self.setWindowTitle(APP_NAME); self.resize(1100,750)
@@ -816,7 +808,7 @@ class MainWindow(QMainWindow):
         # Left stack: user panel (0) / cast panel (1)
         self._left_stack=_CurrentPageStack()
         self._user_panel=OpeningUserPanel(); self._left_stack.addWidget(self._user_panel)
-        from cast import LineWidget, CastPanel
+        from cast import CastPanel
         self._cast_panel=CastPanel(self.hex)
         self._cast_panel.line_cast.connect(self._on_line_cast)
         self._cast_panel.cast_done.connect(self._on_cast_done)
@@ -908,19 +900,6 @@ class MainWindow(QMainWindow):
         hm.addAction("&User Guide",lambda: self._load_content_html("help.html"))
         hm.addAction("&About",     lambda: self._load_content_html("about.html"))
 
-    def _set_mode_opening(self):
-        self._mode=self.MODE_OPENING
-        self._main_stack.setCurrentIndex(0)
-        self._left_stack.setCurrentIndex(0); self._right_stack.setCurrentIndex(0)
-        self._right_stack.setMaximumWidth(self._WIDGET_MAX)
-        self._top_split.setSizes([220,880])
-        self._tabs.tabBar().setVisible(False)
-        self._form_panel.set_show_bg(False)
-        for b in self._browsers.values():
-            b.set_nav_visible(False); b.set_active(False)
-        self._apply_opening_style()
-        self.update()
-
     def _set_mode_new_reading(self):
         self._cast_started=False; self._cast_complete=False
         self._mode=self.MODE_NEW_READING
@@ -943,7 +922,6 @@ class MainWindow(QMainWindow):
 
     def _set_mode_reader(self,html,base_url=None):
         self._mode=self.MODE_READER
-        from PySide6.QtCore import QUrl
         if base_url: self._reader_browser.setHtml(html,base_url)
         else: self._reader_browser.setHtml(html)
         self._main_stack.setCurrentIndex(1); self.update()
@@ -1004,8 +982,7 @@ class MainWindow(QMainWindow):
     def _on_proceed(self,username,question,moment_data):
         self._cast_started=False; self._cast_complete=False
         self._current_user=username; self._question=question; self._moment_data=moment_data
-        self._cast_panel.set_user(username)
-        self._cast_panel.set_alias(username)   # alias now lives in CastPanel header
+        self._cast_panel.set_alias(username)   # alias lives in CastPanel header
         self._cast_panel.reset()
         self._cast_panel.setEnabled(True)
         self._hex_display.clear()
@@ -1014,9 +991,14 @@ class MainWindow(QMainWindow):
             b.set_active(True)
         self._right_stack.setCurrentIndex(1)
         self._set_mode_casting()
-        self._status_bar.showMessage(
-            "Welcome{}.  Cast a hexagram to begin.".format(
-                ", "+username if username!="Guest" else ""),5000)
+        if self._pending_manual_lines:
+            lines=self._pending_manual_lines; self._pending_manual_lines=None
+            self._cast_started=True
+            self._cast_panel.apply_manual(lines)   # emits cast_done -> journal auto-save
+        else:
+            self._status_bar.showMessage(
+                "Welcome{}.  Cast a hexagram to begin.".format(
+                    ", "+username if username!="Guest" else ""),5000)
 
     def _load_content_html(self,content_file):
         from PySide6.QtCore import QUrl
@@ -1024,6 +1006,7 @@ class MainWindow(QMainWindow):
         try:
             with open(path,encoding="utf-8") as f: html=f.read()
         except Exception as e: html=f"<p>Could not load {content_file}: {e}</p>"
+        html=html.replace("%%APP_VER%%",APP_VER)
         self._set_mode_reader(html,QUrl.fromLocalFile(path))
 
     def _show_practice(self):     self._load_content_html("practice.html")
@@ -1038,7 +1021,7 @@ class MainWindow(QMainWindow):
         page=QWidget(); page.setStyleSheet("background:#efe6d2;")
         hl=QHBoxLayout(page); hl.setContentsMargins(18,18,18,18); hl.setSpacing(18)
 
-        self._wheel=WheelWidget(HEX_NAMES,HEX_CHARS)
+        self._wheel=WheelWidget()
         hl.addWidget(self._wheel,1)
 
         info=QFrame(); info.setFixedWidth(280)
@@ -1101,21 +1084,12 @@ class MainWindow(QMainWindow):
         try:
             with open(path,"r",encoding="utf-8",errors="replace") as f: html=f.read()
         except Exception as e: html=f"<p style='color:red'>{e}</p>"
-        css="""body{background-color:#f8f8f6;font-family:Georgia,serif;font-size:15px;line-height:1.7;margin:16px 24px;}
-            p.title{color:#515150;font-size:1.6em;font-weight:bold;font-style:italic;
-            font-family:'aoyagireisyosimo2','AR PL UKai CN',Georgia,serif;line-height:1.4;}
-            p.composition{color:#515150;font-size:1.1em;font-weight:bold;font-style:italic;margin-top:1em;}
-            p.comment{color:#1a1a1a;font-size:1.0em;margin-top:0.4em;}
-            p.sec{color:#515150;font-size:1.2em;font-weight:bold;font-style:italic;margin-top:1em;}
-            p.text{color:#2a082a;font-size:1.0em;margin-top:0.3em;}
-            .han{font-family:'aoyagireisyosimo2','AR PL UKai CN',serif;font-size:1.8em;vertical-align:middle;margin-right:0.2em;}
-            em{font-style:italic;color:#515150;}"""
+        css=_reader_css()
         html=re.sub(r'<LINK[^>]*>','',html,flags=re.IGNORECASE)
         html=html.replace("</head>",f"<style>{css}</style></head>",1)
         try:
             from hexfig import inject_hex_figure; html=inject_hex_figure(html,hex_id,size=28)
         except Exception: pass
-        from PySide6.QtCore import QUrl
         self._set_mode_reader(html,QUrl.fromLocalFile(
             os.path.join(BOOK_DIR,"en","wilhelm",f"hex{hex_id}")+os.sep))
         self._status_bar.showMessage(f"Study:  Hexagram {hex_id} — {HEX_NAMES.get(hex_id,'')}",6000)
@@ -1176,17 +1150,6 @@ class MainWindow(QMainWindow):
             self._cast_panel.apply_method(index)    # completed reading — start a new one
             self._set_mode_new_reading()
 
-    def _add_notes(self):
-        if self._current_user=="Guest":
-            QMessageBox.information(self,"Guest Session",
-                "Select a user profile to save journal entries."); return
-        if not self._last_entry_id:
-            QMessageBox.information(self,"No Reading",
-                "Complete a cast first — notes are saved to the most recent reading."); return
-        from journal import AddNotesDialog
-        dlg=AddNotesDialog(self._last_entry_id,self._current_user)
-        dlg.show(); dlg.raise_()
-
     def _view_journal(self):
         from journal import JournalView
         jv=JournalView(self._current_user); jv.load_hex.connect(self._on_read_hex); jv.show(); jv.raise_()
@@ -1232,22 +1195,17 @@ class MainWindow(QMainWindow):
         ev.accept()
 
     def _show_manual_cast(self):
+        self._pending_manual_lines=None          # fresh dialog voids any held cast
         dlg=ManualCastDialog(); dlg.cast_accepted.connect(self._on_manual_cast); dlg.show(); dlg.raise_()
 
     def _on_manual_cast(self,lines):
-        self._new_reading(); self._pending_manual_lines=lines
-
-    def _open_file(self):
-        path,_=QFileDialog.getOpenFileName(self,"Open Reading","","YiJing readings (*.ich);;All files (*)")
-        if not path: return
-        try:
-            with open(path,encoding="utf-8") as f:
-                lines=[int(c) for c in f.readline().strip()[:6]]
-            self.hex.set_lines(lines); self._cast_panel.reset()
-            for i,v in enumerate(lines): self._cast_panel._line_widgets[i].set_value(v)
-            self._cast_panel._lines=lines
-            self._status_bar.showMessage(f"Loaded: {path}",3000)
-        except Exception as e: QMessageBox.critical(self,"Error",str(e))
+        """Hold the entered lines; they apply on Proceed so the questions form
+        stays the gate. apply_manual then fires cast_done — readers load and
+        the journal entry auto-saves exactly as for a live cast."""
+        self._pending_manual_lines=list(lines)
+        self._new_reading()
+        self._status_bar.showMessage(
+            "Manual cast held — answer the questions and proceed.",6000)
 
     def _export_to_pdf(self):
         from PySide6.QtWidgets import QFileDialog
@@ -1269,16 +1227,6 @@ class MainWindow(QMainWindow):
 
     def _show_trigram_lookup(self):
         dlg=TrigramLookup(); dlg.load_hex.connect(self._show_study_hex); dlg.show(); dlg.raise_()
-
-    def _show_about(self):
-        QMessageBox.about(self,f"About {APP_NAME}",
-            f"<h2>{APP_NAME}</h2><p>Version {APP_VER}</p><hr>"
-            "<p><b>Original software:</b><br>iching-0.2 by Jean Pierre Charalambos (2002)</p>"
-            "<p><b>Coin casting engine:</b><br>pyChing by Stephen M. Gava (1999–2006)</p>"
-            "<p><b>Translations:</b><br>Richard Wilhelm (1923) — English tr. Cary F. Baynes<br>"
-            "James Legge (1899) — Sacred Books of the East</p>"
-            "<p><b>Port and redesign:</b> archerprojects, 2026</p><hr>"
-            "<p>GNU General Public License v3 or later.</p>")
 
 
 # ══════════════════════════════════════════════════════════════════════════════

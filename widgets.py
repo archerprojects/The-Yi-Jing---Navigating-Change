@@ -9,7 +9,6 @@ Version 2.8.0
 GNU GPL v3
 """
 
-from PySide6.QtWidgets import QWidget
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWebEngineCore import QWebEngineSettings
 from PySide6.QtCore import Qt
@@ -43,11 +42,3 @@ class ZoomView(QWebEngineView):
             event.accept()
         else:
             super().wheelEvent(event)
-
-    def zoomIn(self, range=1):
-        self._zoom = min(self._zoom + 0.1, 3.0)
-        self.setZoomFactor(self._zoom)
-
-    def zoomOut(self, range=1):
-        self._zoom = max(self._zoom - 0.1, 0.5)
-        self.setZoomFactor(self._zoom)

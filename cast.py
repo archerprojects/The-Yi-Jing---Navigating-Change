@@ -13,7 +13,7 @@ import os, sys, re, base64, random, time
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
-    QStackedWidget, QFrame,
+    QStackedWidget,
 )
 from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QPainter, QPen, QColor, QPixmap
@@ -332,6 +332,23 @@ class _CoinCastPanel(QWidget):
     def get_lines(self):
         return list(self._lines)
 
+    def apply_manual(self, lines):
+        """Show a manually entered cast (six 6/7/8/9 values) as complete.
+        Locks casting and emits cast_done once — downstream flow (hex model,
+        readers, journal auto-save) is identical to a live cast."""
+        self.reset()
+        self._lines = list(lines)
+        for i, v in enumerate(lines):
+            self._line_widgets[i].set_value(v)
+            self._line_labels[i].setStyleSheet(
+                "font-size:11px; color:#cc2200; font-weight:bold; background:transparent;"
+                if v in (6, 9) else
+                "font-size:11px; color:#515150; background:transparent;")
+        self._status.setText("Manual cast — all 6 lines entered.")
+        self._btn_line.setVisible(False)
+        self._btn_all.setEnabled(False)
+        self.cast_done.emit()
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # YARROW PANEL — lazy import
@@ -365,12 +382,8 @@ class CastPanel(QWidget):
 
     def __init__(self, hex_model, parent=None):
         super().__init__(parent)
-        self.hex       = hex_model
-        self._is_guest = True
+        self.hex = hex_model
         self._build()
-
-    def set_user(self, username):
-        self._is_guest = (username == "Guest")
 
     def set_alias(self, name):
         self._alias_lbl.setText(name if name != "Guest" else "")
@@ -479,3 +492,10 @@ class CastPanel(QWidget):
         if self._stack.currentIndex() == 0:
             return self._coin_panel.get_lines()
         return self._yarrow_panel.get_lines()
+
+    def apply_manual(self, lines):
+        """Apply a manually entered cast: coin panel displays the six lines,
+        casting locks, and cast_done fires through the normal completion path."""
+        self.apply_method(0)
+        self._title_lbl.setText("Manual Cast Entry")
+        self._coin_panel.apply_manual(lines)

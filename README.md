@@ -1,11 +1,10 @@
 # The YiJing (I Ching) — Navigating Change
 
 A desktop oracle for consulting the YiJing (I Ching) — 易經, "The Book of Changes" —
-Cast a hexagram by coin or yarrow stalk, read it across five sources —
-three classic translations, the original Chinese text, and the Ten Wings —
+Cast a hexagram by coin or yarrow stalk, read it across three classic translations,
 and keep a private reading journal — all in one offline Linux application.
 
-**Version:** 1.0
+**Version:** 1.0.1
 **Flatpak ID:** `io.archerprojects.YiJingNavigatingChange`
 **Platform:** Linux (Flatpak) · X11 · x86_64
 **Developer:** archerprojects — <archer.projects@proton.me> · GitHub [@archerprojects](https://github.com/archerprojects)
@@ -30,7 +29,9 @@ network connection or any external service.
 - **Two casting methods.** Coin toss (every line type equally likely) and the older
   yarrow-stalk method, which weights the lines unequally (Old Yin is rare — 1 in 16).
   The yarrow cast is animated stalk by stalk.
-- **Manual cast entry.** Enter a hexagram by hand when you have cast off-screen.
+- **Manual cast entry.** Cast off-screen with real coins or stalks, then enter the
+  six lines by hand — the reading flows through the same question form, readers,
+  and journal entry as a live cast.
 - **Five reading sources.** Richard Wilhelm (tr. Cary F. Baynes), James Legge, and
   Bradford Hatcher — plus the original Chinese text (中文) of the Zhouyi and the
   Ten Wings (十翼) commentaries in Chinese with Legge's translation — switchable
@@ -47,9 +48,18 @@ network connection or any external service.
 
 ## Screenshots
 
-![](screenshots/YiJing_1.jpg)
-![](screenshots/YiJing_2.jpg)
-![](screenshots/YiJing_3.jpg)
+*The opening screen — select a profile and bring a question to the oracle:*
+
+![Opening screen](screenshots/opening.jpg)
+
+*A new coin cast, ready to begin:*
+
+![Casting screen](screenshots/casting.jpg)
+
+*A completed reading — Hexagram 7 (師 Shī, The Army) with a moving third line,
+changing to Hexagram 3 (屯 Zhūn, Difficulty):*
+
+![Completed reading](screenshots/reading.jpg)
 
 ---
 
@@ -65,21 +75,24 @@ stored locally per profile.
 | File | Responsibility |
 |---|---|
 | `yijing_main.py` | Main window, layout and mode switching, `HexDisplay`, hex-panel sizing, reading flow. Holds the app-identity block (`APP_NAME`, `APP_VER`, `APP_ID`) — the single source of truth for version and ID. |
-| `cast.py` | Cast panel and coin engine: `CastPanel`, coin cast panel, `CoinWidget`, `LineWidget`, coin-image loader. |
+| `cast.py` | Cast panel and coin engine: `CastPanel`, coin cast panel, `CoinWidget`, `LineWidget`, manual-cast application, coin-image loader. |
 | `yarrow_animation.py` | Yarrow panel and animated stalk-sorting widget. |
 | `coin_images.py` | Base64-encoded cash-coin animation frames. |
 | `journal.py` | Reading journal, profiles, entry storage, moon-phase calculation. |
+| `wheel.py` | `WheelWidget` — the 64-hexagram study wheel (drag, flick, spin, click, hover). |
 | `hexfig.py` | SVG hexagram-figure injection into book HTML. |
-| `widgets.py` | `ZoomView` (a `QWebEngineView` subclass) used by the reader. |
-| `build.sh` | Generic build script. Reads version and app ID from `yijing_main.py`; produces the PyInstaller bundle and the Flatpak. |
+| `widgets.py` | `ZoomView` (a `QWebEngineView` subclass with Ctrl+wheel zoom) used by the reader. |
+| `book/css/reader.css` | The reader stylesheet, injected into every book and study page. |
+| `build.sh` | Build script. Reads version and app ID from `yijing_main.py`; produces the PyInstaller bundle and the Flatpak. |
 
 ### Runtime assets
 
 The following assets are bundled into the Flatpak at build time and are **required to
 build a working application**:
 
-- `book/`, `content/` — reader sources (Wilhelm, Legge, Hatcher, 中文, Ten Wings) and study content
-- `opening_image.png`, `opening_image_wo_text.png`, `swirl.png` — artwork
+- `book/`, `content/` — reader sources (Wilhelm, Legge, Hatcher, 中文, Ten Wings),
+  the reader stylesheet, and study content
+- `opening_image.png` — artwork
 - `ukai_yijing.ttf` — AR PL UKai CN subset (CJK body text)
 - `aoyagi_yijing.ttf` — Aoyagi Reisho SIMO subset (clerical-script headings); its
   author's distribution documents accompany it and must remain in the repository
@@ -106,18 +119,20 @@ build a working application**:
   flatpak install flathub org.freedesktop.Platform//25.08 org.freedesktop.Sdk//25.08
   ```
 
-### Build and install
+### Build
 
 From the project directory:
 
 ```sh
-rm -rf dist build *.spec && ./build.sh
+./build.sh              # build the .flatpak bundle only
+./build.sh --install    # build, then install to the user Flatpak
+./build.sh --run        # build, install, then launch
 ```
 
 `build.sh` reads the version and Flatpak ID directly from `yijing_main.py`, runs
-PyInstaller, packages the Flatpak (`YiJingNavigatingChange-<version>-x86_64.flatpak`),
-and installs it. No paths or version numbers are hardcoded in the script — bumping
-`APP_VER` in `yijing_main.py` is the only change needed to version a release.
+PyInstaller, and packages the Flatpak (`YiJingNavigatingChange-<version>-x86_64.flatpak`).
+The About page reads the same value at runtime, so bumping `APP_VER` in
+`yijing_main.py` is the only change needed to version a release.
 
 ### Run
 
@@ -136,23 +151,23 @@ earlier free-software work and public-domain scholarship. It is released under t
 **GNU General Public License, version 3 or later** (GPL-3.0-or-later). The full
 licence text is in [`LICENSE`](LICENSE).
 
-| Contributor | Work | Licence |
+| Contributor | Work | Licence / status |
 |---|---|---|
 | Jean Pierre Charalambos | iching-0.2 original (2002) | GPL-2.0 |
 | Stephen M. Gava | pyChing coin engine + animation | GPL-2.0 |
-| Richard Wilhelm | Translation (1923), tr. Cary F. Baynes | Public domain |
-| James Legge | Translation (1899); Ten Wings translation (1882) | Public domain |
-| Bradford Hatcher | Translation (2009), hermetica.info | Free |
+| Richard Wilhelm | *I Ging. Das Buch der Wandlungen* (Jena: Eugen Diederichs, 1924) | German text public domain |
+| Cary F. Baynes | *The I Ching or Book of Changes*, English translation of Wilhelm, Bollingen Series XIX (1950; 3rd ed. Princeton University Press, 1967) | © Princeton University Press |
+| James Legge | *The Yî King*, Sacred Books of the East vol. XVI (Oxford: Clarendon Press, 1882; 2nd ed. 1899), including the Ten Wings appendixes | Public domain |
+| Bradford Hatcher | *The Book of Changes: Yijing, Word by Word*, vols. 1–2 (hermetica.info, 2009) | © 2009 Bradford Hatcher; published free of charge by the author, redistributed with attribution |
 | Arphic Technology | AR PL UKai CN font | Arphic Public License |
-| 青柳衡山 (Aoyagi Kouzan) / SIMO | Aoyagi Reisho SIMO font (headings) | Free for any use (author's terms; docs bundled) |
+| 青柳衡山 (Aoyagi Kōzan) / SIMO | Aoyagi Reisho SIMO font (headings) | Free for any use (author's terms; docs bundled in `fonts/simo_docs/`) |
 | — | Zhouyi base text, 卦辭/爻辭 (Chinese Wikisource & ctext.org, pulled 2026-06) | Public domain |
 | — | Ten Wings 十翼, Chinese text (ctext.org, pulled 2026-06) | Public domain |
 | rjv | Python/PySide6 port, redesign, content (2026) | GPL-3.0 |
 
 The coin animation frames in `coin_images.py` are the original pyChing image data by
 Stephen M. Gava and retain their GPL-2.0 attribution; the casting logic has been
-rewritten for this project. All components above are licensed under GPL-compatible
-terms, and the combined work is distributed under GPL-3.0-or-later.
+rewritten for this project.
 
 ---
 

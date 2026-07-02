@@ -44,8 +44,6 @@ pyinstaller \
   --add-data "book:book" \
   --add-data "content:content" \
   --add-data "opening_image.png:." \
-  --add-data "opening_image_wo_text.png:." \
-  --add-data "swirl.png:." \
   --add-data "ukai_yijing.ttf:." \
   --add-data "aoyagi_yijing.ttf:." \
   --add-data "coin_images.py:." \
@@ -95,11 +93,16 @@ cat > "$WORKDIR/export/share/metainfo/${APP_ID}.metainfo.xml" << META
   <id>${APP_ID}</id>
   <name>The YiJing (I Ching) — Navigating Change</name>
   <summary>Cast hexagrams and consult the Book of Changes</summary>
+  <launchable type="desktop-id">${APP_ID}.desktop</launchable>
+  <developer id="io.archerprojects"><name>archerprojects</name></developer>
+  <url type="homepage">https://github.com/archerprojects/YiJingNavigatingChange</url>
+  <content_rating type="oars-1.1"/>
   <metadata_license>MIT</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
   <description>
-    <p>YiJing oracle with Wilhelm, Legge, and Hatcher translations, Journal,
-    Commentaries, and History. PySide6, native Wayland support.</p>
+    <p>Cast hexagrams by coin or yarrow and read across five sources —
+    Wilhelm, Legge, Hatcher, the Chinese text, and the Ten Wings — with a
+    reading journal, study wheel, commentaries, and history. Python/PySide6.</p>
   </description>
   <releases><release version="${VERSION}" date="${BUILD_DATE}"/></releases>
 </component>
@@ -121,6 +124,7 @@ META
 
 # ── Step 3: Export and bundle ─────────────────────────────────────────────────
 flatpak build-export --arch=x86_64 "$REPO" "$WORKDIR" stable
+flatpak build-update-repo "$REPO"
 
 flatpak build-bundle --arch=x86_64 \
     --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo \

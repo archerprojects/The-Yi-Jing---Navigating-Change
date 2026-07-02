@@ -1,0 +1,22 @@
+/* The YiJing — Navigating Change
+   reader.css — injected into every book/study page by yijing_main._reader_css().
+   Legacy <LINK> tags in the page HTML are stripped at load; this file is the
+   single stylesheet for the reader. Edit here — no Python changes needed. */
+
+body{background-color:#f8f8f6;font-family:Georgia,serif;
+    font-size:15px;line-height:1.7;margin:16px 24px;}
+p.title{color:#515150;font-size:1.6em;font-weight:bold;font-style:italic;
+    font-family:'aoyagireisyosimo2','AR PL UKai CN',Georgia,serif;
+    margin-bottom:0.3em;line-height:1.4;}
+p.composition{color:#515150;font-size:1.1em;font-weight:bold;
+    font-style:italic;margin-top:1em;margin-bottom:0.2em;}
+p.comment{color:#1a1a1a;font-size:1.0em;margin-top:0.4em;}
+p.sec{color:#515150;font-size:1.2em;font-weight:bold;
+    font-style:italic;margin-top:1em;}
+p.text{color:#2a082a;font-size:1.0em;margin-top:0.3em;}
+.han{font-family:'aoyagireisyosimo2','AR PL UKai CN',serif;font-size:1.8em;
+    vertical-align:middle;margin-right:0.2em;}
+em{font-style:italic;color:#515150;}
+a{color:#515150;}
+blockquote{margin-left:20px;border-left:2px solid #c0c0bc;
+    padding-left:12px;color:#555;}

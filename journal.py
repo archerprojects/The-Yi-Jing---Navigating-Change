@@ -9,11 +9,11 @@ from datetime import date, datetime
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QTextEdit, QLineEdit, QFrame, QScrollArea, QMessageBox,
-    QDialog, QFormLayout, QSplitter, QMenu,
+    QTextEdit, QLineEdit, QScrollArea, QMessageBox,
+    QDialog, QSplitter, QMenu,
 )
 from PySide6.QtCore import Qt, Signal, QByteArray
-from PySide6.QtGui import QColor, QPixmap, QPainter
+from PySide6.QtGui import QPixmap, QPainter
 from PySide6.QtSvg import QSvgRenderer
 import hexfig
 
@@ -645,6 +645,7 @@ class JournalView(QWidget):
             row("Relating",     f"{rchar}  {rid}. {rname}")
         # Hexagram figures (Primary, and Relating if there are moving lines)
         fig_row = QHBoxLayout(); fig_row.setSpacing(28)
+        fig_row.setContentsMargins(0, 0, 0, 0)
         if hid:
             fig_row.addLayout(self._hex_figure_block("Primary", int(hid),
                                                       f"{char} {hid}"))
@@ -652,7 +653,8 @@ class JournalView(QWidget):
             fig_row.addLayout(self._hex_figure_block("Relating", int(rid),
                                                      f"{rchar} {rid}"))
         fig_row.addStretch()
-        self._detail_layout.insertLayout(self._detail_layout.count()-1, fig_row)
+        fig_w = QWidget(); fig_w.setLayout(fig_row)   # widget-wrapped: re-render deletes it
+        self._detail_layout.insertWidget(self._detail_layout.count()-1, fig_w)
 
         hex_btn_row = QHBoxLayout()
         if hid:
@@ -666,7 +668,9 @@ class JournalView(QWidget):
             rb.clicked.connect(lambda: self._load_hex_in_panel(int(rid)))
             hex_btn_row.addWidget(rb)
         hex_btn_row.addStretch()
-        self._detail_layout.insertLayout(self._detail_layout.count()-1, hex_btn_row)
+        hex_btn_row.setContentsMargins(0, 0, 0, 0)
+        hex_btn_w = QWidget(); hex_btn_w.setLayout(hex_btn_row)   # widget-wrapped: re-render deletes it
+        self._detail_layout.insertWidget(self._detail_layout.count()-1, hex_btn_w)
 
         section("Circumstance")
         circ_lbl = QLabel(e.get("circumstance","") or "—")

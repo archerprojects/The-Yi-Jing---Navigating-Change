@@ -6,20 +6,21 @@ Version 2.8.9
 GNU GPL v3
 """
 
+# Line values BOTTOM-TO-TOP (index 0 = bottom line), matching the renderer.
 _TRIGRAM_LINES = {
-    1: [7, 7, 7],  # Heaven  all yang
-    2: [8, 7, 7],  # Lake    yin,yang,yang
-    3: [7, 8, 7],  # Fire    yang,yin,yang
-    4: [8, 8, 7],  # Thunder yin,yin,yang
-    5: [7, 7, 8],  # Wind    yang,yang,yin
-    6: [8, 7, 8],  # Water   yin,yang,yin
-    7: [7, 8, 8],  # Mountain yang,yin,yin
-    8: [8, 8, 8],  # Earth   all yin
+    1: [7, 7, 7],  # 乾 Heaven   yang,yang,yang
+    2: [7, 7, 8],  # 兌 Lake     yang,yang,yin  (broken top)
+    3: [7, 8, 7],  # 離 Fire     yang,yin,yang
+    4: [7, 8, 8],  # 震 Thunder  yang,yin,yin   (solid bottom)
+    5: [8, 7, 7],  # 巽 Wind     yin,yang,yang  (broken bottom)
+    6: [8, 7, 8],  # 坎 Water    yin,yang,yin
+    7: [8, 8, 7],  # 艮 Mountain yin,yin,yang   (solid top)
+    8: [8, 8, 8],  # 坤 Earth    yin,yin,yin
 }
 
 _HEX_TABLE = {}
 _RAW = [
-    (1,1,1),(2,8,8),(3,6,4),(4,7,6),(5,6,1),(6,1,6),(7,6,8),(8,8,6),
+    (1,1,1),(2,8,8),(3,6,4),(4,7,6),(5,6,1),(6,1,6),(7,8,6),(8,6,8),
     (9,5,1),(10,1,2),(11,8,1),(12,1,8),(13,1,3),(14,3,1),(15,8,7),(16,4,8),
     (17,2,4),(18,7,5),(19,8,2),(20,5,8),(21,3,4),(22,7,3),(23,7,8),(24,8,4),
     (25,1,4),(26,7,1),(27,7,4),(28,2,5),(29,6,6),(30,3,3),(31,2,7),(32,4,5),
