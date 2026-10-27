@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 wheel.py — The Hexagram Wheel (Study screen).
+Version 1.0.2 — Wednesday 28 October 2026
 
 A circular compass of all 64 hexagrams (King Wen order): number ring and
 six-line figure per wedge, 易經 hub, fixed pointer at 12 o'clock.
@@ -203,7 +204,7 @@ class WheelWidget(QWidget):
         # hover highlight wedge (drawn in screen space)
         if self._hover_hid and not self._drag and not self._timer.isActive():
             i = self._hover_hid - 1
-            start = -(i * _WEDGE + self._angle + 90.0 + _WEDGE / 2.0)
+            start = -(i * _WEDGE + self._angle - 90.0 + _WEDGE / 2.0)
             path = QPainterPath()
             path.moveTo(QPointF(cx, cy))
             rect = QRectF(cx - half * self._r_out, cy - half * self._r_out,

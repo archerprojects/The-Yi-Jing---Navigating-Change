@@ -1,18 +1,18 @@
 """
 The YiJing — Navigating Change
-journal.py — Version 2.8.12
+journal.py — Version 1.0.2 — Wednesday 28 October 2026
 GNU GPL v3
 """
 
 import os, sys, re, json
-from datetime import date, datetime
+from datetime import datetime, timezone
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTextEdit, QLineEdit, QScrollArea, QMessageBox,
     QDialog, QSplitter, QMenu,
 )
-from PySide6.QtCore import Qt, Signal, QByteArray
+from PySide6.QtCore import Qt, Signal, QByteArray, QTimer
 from PySide6.QtGui import QPixmap, QPainter
 from PySide6.QtSvg import QSvgRenderer
 import hexfig
@@ -41,54 +41,169 @@ def _yijing_dir():
 def _users_path():
     return os.path.join(_yijing_dir(), "users.json")
 
+def _users_backup_path():
+    return os.path.join(_yijing_dir(), "users_backup.json")
+
+# Journal files are named alias + registration stamp (journal_rjv_20261028-091402.json)
+# so no two accounts can share one. Accounts from before the stamp keep their
+# old file (journal_rjv.json) until their next consultation moves them.
+
+def _safe(username):
+    return re.sub(r'[^a-zA-Z0-9_-]', '_', username)
+
+_STAMP_RE = re.compile(r"_(\d{8}-\d{6}(?:-\d+)?)\.json$")
+
+def _stamps_on_disk(username):
+    prefix = f"journal_{_safe(username)}_"
+    return [m.group(1) for f in os.listdir(_yijing_dir())
+            if f.startswith(prefix) and not f.endswith("_backup.json")
+            and (m := _STAMP_RE.search(f)) and f == f"{prefix}{m.group(1)}.json"]
+
+def _registered(username):
+    """The account's registration stamp, or None for a pre-stamp account. If the
+    profiles store is unreadable, a single stamped file on disk is still found."""
+    try:
+        profiles = _load_store(_profile_path(), _profile_backup_path(), dict)
+    except StoreError:
+        found = _stamps_on_disk(username)
+        return found[0] if len(found) == 1 else None
+    return profiles.get(username, {}).get("registered")
+
+def _journal_stem(username):
+    stamp = _registered(username)
+    return f"journal_{_safe(username)}" + (f"_{stamp}" if stamp else "")
+
 def _journal_path(username="Default"):
-    safe = re.sub(r'[^a-zA-Z0-9_-]', '_', username)
-    return os.path.join(_yijing_dir(), f"journal_{safe}.json")
+    return os.path.join(_yijing_dir(), _journal_stem(username) + ".json")
 
 def _journal_backup_path(username="Default"):
-    safe = re.sub(r'[^a-zA-Z0-9_-]', '_', username)
-    return os.path.join(_yijing_dir(), f"journal_{safe}_backup.json")
+    return os.path.join(_yijing_dir(), _journal_stem(username) + "_backup.json")
 
-
-def load_users():
-    """Return list of user aliases. Empty list if none created yet."""
+def _new_stamp(username):
+    """A registration stamp whose journal file name is not already taken, on disk
+    or by another account whose alias cleans to the same name."""
+    taken = set(_stamps_on_disk(username))
     try:
-        with open(_users_path(), encoding="utf-8") as f:
-            users = json.load(f)
-        if not isinstance(users, list):
-            return []
-        # Filter out the old "Default" placeholder if present
-        return [u for u in users if u != "Default"]
-    except Exception:
+        profiles = _load_store(_profile_path(), _profile_backup_path(), dict)
+        taken |= {p.get("registered") for a, p in profiles.items()
+                  if a != username and _safe(a) == _safe(username)}
+    except StoreError:
+        pass
+    base = datetime.now().strftime("%Y%m%d-%H%M%S"); stamp = base; n = 2
+    while stamp in taken:
+        stamp = f"{base}-{n}"; n += 1
+    return stamp
+
+def _set_registered(username, stamp):
+    profiles = _load_store(_profile_path(), _profile_backup_path(), dict)
+    profiles.setdefault(username, _blank_profile(username))["registered"] = stamp
+    _write_store(_profile_path(), _profile_backup_path(), profiles)
+
+def _ensure_registered(username):
+    """Give a pre-stamp account its stamp, copying its readings into the stamped
+    file first. The old file is left untouched. If the stamp cannot be saved the
+    account simply stays on its old file and is tried again next time."""
+    if _registered(username):
+        return
+    try:                                      # no stray copies: only move if the stamp can be saved
+        _load_store(_profile_path(), _profile_backup_path(), dict)
+    except StoreError:
+        return
+    entries = load_journal(username)          # old file, or its backup; StoreError if both unreadable
+    stamp = _new_stamp(username)
+    stem = f"journal_{_safe(username)}_{stamp}"
+    _write_store(os.path.join(_yijing_dir(), stem + ".json"),
+                 os.path.join(_yijing_dir(), stem + "_backup.json"), entries)
+    try:
+        _set_registered(username, stamp)
+    except StoreError:
+        pass
+
+
+# ── Data stores (journal, users, profiles) ───────────────────────────────────
+# A store that exists but cannot be read is never written over: reads fall
+# back to the backup, and if both are unreadable StoreError is raised so the
+# caller can warn and save nothing. The backup always holds the previous
+# good version; writes go through a temp file and os.replace.
+
+class StoreError(Exception):
+    """A data file exists but neither it nor its backup can be read."""
+
+def store_warning(parent, err):
+    QMessageBox.warning(parent, "Not Saved",
+        "A data file could not be read, so nothing was saved.\n"
+        f"The existing file has been left untouched:\n{err.args[0]}")
+
+def _read_json(path, kind):
+    """(data, state) — state is 'ok', 'missing' or 'bad' (unreadable or wrong type)."""
+    if not os.path.exists(path):
+        return None, "missing"
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return None, "bad"
+    return (data, "ok") if isinstance(data, kind) else (None, "bad")
+
+def _load_store(path, backup, kind):
+    data, state = _read_json(path, kind)
+    if state == "ok":
+        return data
+    bdata, bstate = _read_json(backup, kind)
+    if bstate == "ok":
+        return bdata
+    if state == "missing" and bstate == "missing":
+        return kind()
+    raise StoreError(path)
+
+def _replace_atomically(path, text):
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(text)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+def _write_store(path, backup, data):
+    if _read_json(path, type(data))[1] == "ok":
+        with open(path, encoding="utf-8") as f:
+            _replace_atomically(backup, f.read())
+    _replace_atomically(path, json.dumps(data, ensure_ascii=False, indent=2))
+
+
+def load_users(strict=False):
+    """Return list of user aliases. Empty list if none created yet.
+    strict=True raises StoreError instead of returning [] for an unreadable file."""
+    try:
+        users = _load_store(_users_path(), _users_backup_path(), list)
+    except StoreError:
+        if strict:
+            raise
         return []
+    # Filter out the old "Default" placeholder if present
+    return [u for u in users if u != "Default"]
 
 def save_users(users):
-    with open(_users_path(), "w", encoding="utf-8") as f:
-        json.dump(users, f, ensure_ascii=False, indent=2)
+    _write_store(_users_path(), _users_backup_path(), users)
 
 def add_user(alias):
-    users = load_users()
+    users = load_users(strict=True)
     if alias and alias not in users:
         users.append(alias)
         save_users(users)
+        try:
+            _set_registered(alias, _new_stamp(alias))
+        except StoreError:
+            pass                                  # stamped at its first consultation instead
     return users
 
 
 def load_journal(username="Default"):
-    try:
-        with open(_journal_path(username), encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return []
+    """Raises StoreError if the journal and its backup are both unreadable."""
+    return _load_store(_journal_path(username), _journal_backup_path(username), list)
 
 def save_journal(entries, username="Default"):
-    path   = _journal_path(username)
-    backup = _journal_backup_path(username)
-    data   = json.dumps(entries, ensure_ascii=False, indent=2)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(data)
-    with open(backup, "w", encoding="utf-8") as f:
-        f.write(data)
+    _write_store(_journal_path(username), _journal_backup_path(username), entries)
 
 def delete_journal_entry(entry_id, username="Default"):
     entries = [e for e in load_journal(username) if e.get("id") != entry_id]
@@ -125,25 +240,30 @@ def auto_save_entry(hex_model, question, username, moment_data):
         "tags":          [],
         "cast_method":   moment_data.get("cast_method", "coin"),
     }
+    _ensure_registered(username)
     entries = load_journal(username)
     entries.insert(0, entry)
     save_journal(entries, username)
     return entry["id"]
 
 
-def moon_phase(d=None):
-    if d is None:
-        d = date.today()
-    known_new = date(2000, 1, 6)
-    cycle = (d - known_new).days % 29.53058867
-    if cycle < 1.85:    return "🌑 New Moon"
-    elif cycle < 7.38:  return "🌒 Waxing Crescent"
-    elif cycle < 9.22:  return "🌓 First Quarter"
-    elif cycle < 14.77: return "🌔 Waxing Gibbous"
-    elif cycle < 16.61: return "🌕 Full Moon"
-    elif cycle < 22.15: return "🌖 Waning Gibbous"
-    elif cycle < 23.99: return "🌗 Last Quarter"
-    else:               return "🌘 Waning Crescent"
+_SYNODIC        = 29.530588853                                    # mean synodic month, days
+_NEW_MOON_EPOCH = datetime(2000, 1, 6, 18, 14, tzinfo=timezone.utc)   # reference new moon
+_PHASES = ["🌑 New Moon", "🌒 Waxing Crescent", "🌓 First Quarter", "🌔 Waxing Gibbous",
+           "🌕 Full Moon", "🌖 Waning Gibbous", "🌗 Last Quarter", "🌘 Waning Crescent"]
+
+def moon_phase(when=None):
+    """Phase name for a moment (default: now), from the mean moon's age in UTC with
+    eight windows centred on each phase — within about a day of the true phase.
+    A plain date is taken at noon UTC; a naive datetime as local time."""
+    if when is None:
+        when = datetime.now(timezone.utc)
+    elif not isinstance(when, datetime):
+        when = datetime(when.year, when.month, when.day, 12, tzinfo=timezone.utc)
+    elif when.tzinfo is None:
+        when = when.astimezone(timezone.utc)
+    age = ((when - _NEW_MOON_EPOCH).total_seconds() / 86400) % _SYNODIC
+    return _PHASES[int(((age + _SYNODIC / 16) % _SYNODIC) // (_SYNODIC / 8))]
 
 
 class AddNotesDialog(QWidget):
@@ -158,7 +278,10 @@ class AddNotesDialog(QWidget):
         self._build()
 
     def _build(self):
-        entries = load_journal(self._username)
+        try:
+            entries = load_journal(self._username)
+        except StoreError:
+            entries = []
         entry   = next((e for e in entries if e.get("id") == self._entry_id), None)
 
         vl = QVBoxLayout(self)
@@ -224,7 +347,10 @@ class AddNotesDialog(QWidget):
         vl.addLayout(btn_row)
 
     def _save(self):
-        entries = load_journal(self._username)
+        try:
+            entries = load_journal(self._username)
+        except StoreError as err:
+            store_warning(self, err); return
         for i, e in enumerate(entries):
             if e.get("id") == self._entry_id:
                 entries[i]["circumstance"] = self._circ.toPlainText().strip()
@@ -301,7 +427,10 @@ class EditEntryDialog(QWidget):
         vl.addLayout(btn_row)
 
     def _save(self):
-        entries = load_journal(self._username)
+        try:
+            entries = load_journal(self._username)
+        except StoreError as err:
+            store_warning(self, err); return
         for i, e in enumerate(entries):
             if e.get("id") == self._entry.get("id"):
                 entries[i]["question"]     = self._q.text().strip()
@@ -444,7 +573,13 @@ class JournalView(QWidget):
         self._trans_btns["wilhelm"].setChecked(True)
 
     def refresh(self):
-        self._entries = load_journal(self._username)
+        try:
+            self._entries = load_journal(self._username)
+        except StoreError as err:
+            self._entries = []
+            QMessageBox.warning(self, "Journal Unreadable",
+                "Your journal file could not be read. It has been left untouched, "
+                f"and nothing will be saved to it:\n{err.args[0]}")
         self._apply_filter(self._filter.text())
 
     def _apply_filter(self, text):
@@ -519,7 +654,9 @@ class JournalView(QWidget):
             self._load_hex_in_panel(int(hid))
 
     def _open_edit(self, entry):
+        from widgets import keep_window
         dlg = EditEntryDialog(entry, self._username)
+        keep_window(self, dlg)
         dlg.saved.connect(self.refresh)
         dlg.show(); dlg.raise_()
 
@@ -534,7 +671,10 @@ class JournalView(QWidget):
         if reply != QMessageBox.Yes:
             return
         entry_id = entry.get("id")
-        delete_journal_entry(entry_id, self._username)
+        try:
+            delete_journal_entry(entry_id, self._username)
+        except StoreError as err:
+            store_warning(self, err); return
         if self._current_entry and self._current_entry.get("id") == entry_id:
             self._current_entry = None
             while self._detail_layout.count() > 1:
@@ -718,7 +858,10 @@ class JournalView(QWidget):
         self._detail_layout.insertWidget(self._detail_layout.count()-1, btn_detail_w)
 
     def _save_edits(self, entry):
-        entries = load_journal(self._username)
+        try:
+            entries = load_journal(self._username)
+        except StoreError as err:
+            store_warning(self, err); return
         for i, e in enumerate(entries):
             if e.get("id") == entry.get("id"):
                 entries[i]["reflection"] = self._refl_edit.toPlainText().strip()
@@ -730,8 +873,8 @@ class JournalView(QWidget):
         self._entries = entries
 
     def _load_hex_in_panel(self, hex_id):
+        # browsing stays in the journal; only the "Read" menu action emits load_hex
         self._current_hex = hex_id
-        self.load_hex.emit(hex_id)
         self._load_translation(self._current_author)
 
     def _load_translation(self, author):
@@ -789,31 +932,39 @@ class JournalView(QWidget):
         url  = request.url()
         path = url.toLocalFile()
         if path and path.endswith('.html') and 'hex' in path:
-            request.reject(); self._load_trans_file(path)
+            # load after this callback returns — loading inside it aborts QtWebEngine
+            request.reject(); QTimer.singleShot(0, lambda p=path: self._follow_trans(p))
+
+    def _follow_trans(self, path):
+        m = re.search(r'hex(\d+)/hex\1_0\.html$', path.replace(os.sep, '/'))
+        if m:
+            self._load_hex_in_panel(int(m.group(1)))
         else:
-            request.accept()
+            self._load_trans_file(path)
 
 
 def _profile_path():
     return os.path.join(_yijing_dir(), "profiles.json")
 
-def load_profile(username):
+def _profile_backup_path():
+    return os.path.join(_yijing_dir(), "profiles_backup.json")
+
+def load_profile(username, strict=False):
     try:
-        with open(_profile_path(), encoding="utf-8") as f:
-            profiles = json.load(f)
-        return profiles.get(username, _blank_profile(username))
-    except Exception:
-        return _blank_profile(username)
+        profiles = _load_store(_profile_path(), _profile_backup_path(), dict)
+    except StoreError:
+        if strict:
+            raise
+        profiles = {}
+    return profiles.get(username, _blank_profile(username))
 
 def save_profile(username, profile):
-    try:
-        with open(_profile_path(), encoding="utf-8") as f:
-            profiles = json.load(f)
-    except Exception:
-        profiles = {}
+    profiles = _load_store(_profile_path(), _profile_backup_path(), dict)
+    stamp = profiles.get(username, {}).get("registered")
+    if stamp and "registered" not in profile:     # a dialog opened before the stamp must not drop it
+        profile = dict(profile, registered=stamp)
     profiles[username] = profile
-    with open(_profile_path(), "w", encoding="utf-8") as f:
-        json.dump(profiles, f, ensure_ascii=False, indent=2)
+    _write_store(_profile_path(), _profile_backup_path(), profiles)
 
 def _blank_profile(username):
     return {
@@ -946,5 +1097,8 @@ class ProfileDialog(QDialog):
             "current_lon": fe(self._curr_lon.text()),
             "notes": self._notes.toPlainText().strip(),
         })
-        save_profile(self._username, self._profile)
+        try:
+            save_profile(self._username, self._profile)
+        except StoreError as err:
+            store_warning(self, err); return
         self.accept()

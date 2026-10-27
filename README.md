@@ -4,7 +4,7 @@ A desktop oracle for consulting the YiJing (I Ching) — 易經, "The Book of Ch
 Cast a hexagram by coin or yarrow stalk, read it across three classic translations,
 and keep a private reading journal — all in one offline Linux application.
 
-**Version:** 1.0.1
+**Version:** 1.0.2 — Wednesday 28 October 2026
 **Flatpak ID:** `io.archerprojects.YiJingNavigatingChange`
 **Platform:** Linux (Flatpak) · X11 · x86_64
 **Developer:** archerprojects — <archer.projects@proton.me> · GitHub [@archerprojects](https://github.com/archerprojects)
@@ -102,6 +102,26 @@ build a working application**:
 > If you obtain the source without the `book/`, `content/`, font, and image assets,
 > the build will complete but the application will be missing its translations,
 > artwork, and CJK font.
+
+### Font subset
+
+`aoyagi_yijing.ttf` is a subset of 青柳隷書しも (Aoyagi Reisho SIMO) v2.02, which covers
+JIS X 0208 only. Several characters the app needs are outside JIS, and the full font maps
+them to blank glyphs, so they were composed from SIMO's own glyphs. Each part keeps
+SIMO's strokes; only scale and position change (units of 1024 per em).
+
+| Glyph | Built from |
+|---|---|
+| 說 | 言 from SIMO 説 + 兌 from SIMO 兌 (sx 0.700, sy 1.079) |
+| 姤 | 女 cut from SIMO 好 + 后, fitted to 好's right-hand box (sx 0.581, sy 1.032) |
+| 嗑 | 口 cut from SIMO 噬 + 盍, fitted to 噬's right-hand box (sx 0.811, sy 0.947) |
+| 睽 | 目 cut from SIMO 睦 + 癸, fitted to 睦's right-hand box (sx 0.714, sy 1.084) |
+| 繫 | 車 + 凵 (forming 𨊥), 殳 and 糸, each a whole SIMO glyph placed in the traditional ⿱𣪠糸 layout |
+
+If the subset is ever regenerated from the full font, these glyphs must be carried over;
+a plain subset brings back blank glyphs for 姤 嗑 睽 繫. After any change to the font, its
+vertical metrics (`vmtx`) must cover every glyph, and the file must pass the OpenType
+Sanitizer (`python -m ots aoyagi_yijing.ttf`); QtWebEngine rejects a font that fails it.
 
 ---
 

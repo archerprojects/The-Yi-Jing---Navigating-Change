@@ -1,5 +1,6 @@
 """
 The YiJing (I Ching) — Navigating Change
+Version 1.0.2 — Wednesday 28 October 2026
 
 Python/PySide6 port of iching-0.2 by Jean Pierre Charalambos (2002).
 Coin casting engine from pyChing by Stephen M. Gava (1999-2006).
@@ -9,7 +10,7 @@ Port and redesign: rjv, 2026 — GNU GPL v3
 
 # ── Application Identity ──────────────────────────────────────────────────────
 APP_NAME    = "The YiJing (I Ching) — Navigating Change"
-APP_VER     = "1.0.1"
+APP_VER     = "1.0.2"
 APP_DEV     = "archerprojects"
 APP_CONTACT = "archer.projects@proton.me"
 APP_ID      = "io.archerprojects.YiJingNavigatingChange"
@@ -35,7 +36,7 @@ from PySide6.QtWidgets import (
     QGridLayout, QDialog,
 )
 from PySide6.QtCore import Qt, Signal, QObject
-from PySide6.QtGui import QPainter, QColor, QPixmap, QPalette, QFontDatabase
+from PySide6.QtGui import QPainter, QColor, QPixmap, QPalette, QFontDatabase, QIcon
 
 def resource(rel):
     base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
@@ -143,8 +144,8 @@ class HexModel(QObject):
         rel=HexModel(); rel.lines=self.relating_lines()
         return HEX_TABLE.get((rel.sup_id(),rel.inf_id()),1)
 
-from widgets import ZoomView
-from journal import load_users, add_user
+from widgets import ZoomView, keep_window
+from journal import load_users, add_user, StoreError, store_warning
 
 # ══════════════════════════════════════════════════════════════════════════════
 # HEX DISPLAY — two column: primary | → | relating
@@ -424,14 +425,23 @@ class BookBrowser(QWidget):
         self._active=True
         self._current_hex_id=hex_id; self._section=section; self._load()
 
+    def _pages(self):
+        """Pages present for this source and hexagram, in reading order:
+        overview, sections 1-6, then 'all lines moving' where it exists (1, 2)."""
+        hid=self._current_hex_id; d=os.path.join(BOOK_DIR,"en",self._author,f"hex{hid}")
+        names=[f"hex{hid}_{s}.html" for s in range(7)]+[f"hex{hid}_all.html"]
+        return [n for n in names if os.path.exists(os.path.join(d,n))] or names[:1]
+
     def _nav(self,delta):
-        self._section=max(0,min(7,self._section+delta)); self._load()
+        self._section=(self._section+delta)%len(self._pages()); self._load()   # wraps both ways
 
     def _load(self):
-        hid=self._current_hex_id; sec=self._section
-        fname=f"hex{hid}_0.html" if sec==0 else f"hex{hid}_{sec}.html"
+        hid=self._current_hex_id; pages=self._pages()
+        self._section%=len(pages); fname=pages[self._section]
         path=os.path.join(BOOK_DIR,"en",self._author,f"hex{hid}",fname)
-        self._section_lbl.setText(f"Section {sec} of 6" if sec>0 else "Overview")
+        sec=fname[len(f"hex{hid}_"):-len(".html")]
+        self._section_lbl.setText("Overview" if sec=="0" else
+                                  "All lines moving" if sec=="all" else f"Section {sec} of 6")
         self._load_file(path)
 
     def _load_file(self,path):
@@ -453,10 +463,22 @@ class BookBrowser(QWidget):
         self.browser.setHtml(html,QUrl.fromLocalFile(os.path.dirname(path)+os.sep))
 
     def _on_navigation(self,request):
+        from PySide6.QtCore import QTimer
         url=request.url(); path=url.toLocalFile()
         if path and path.endswith('.html') and 'hex' in path:
-            request.reject(); self._load_file(path)
-        else: request.accept()
+            # load after this callback returns — loading inside it aborts QtWebEngine
+            request.reject(); QTimer.singleShot(0, lambda p=path: self._follow(p))
+
+    def _follow(self,path):
+        """Open a linked book page as this reader's own position, so the label,
+        the figure and Prev/Next follow the linked hexagram."""
+        m=re.search(r'hex(\d+)/(hex\1_(?:\d|all)\.html)$',path.replace(os.sep,'/'))
+        author_dir=os.path.normpath(os.path.join(BOOK_DIR,"en",self._author))
+        if m and os.path.normpath(os.path.dirname(os.path.dirname(path)))==author_dir:
+            self._current_hex_id=int(m.group(1)); pages=self._pages()
+            if m.group(2) in pages:
+                self._section=pages.index(m.group(2)); self._load(); return
+        self._load_file(path)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -494,8 +516,8 @@ class NewUserDialog(QDialog):
     def _accept_alias(self):
         alias=self._edit.text().strip()
         if not alias: return
-        if alias.lower()=="guest":
-            QMessageBox.warning(self,"Reserved","'Guest' is reserved."); return
+        if alias.lower() in ("guest","default"):
+            QMessageBox.warning(self,"Reserved",f"'{alias.capitalize()}' is reserved."); return
         self._alias=alias; self.accept()
 
     def alias(self): return self._alias
@@ -593,7 +615,10 @@ class OpeningUserPanel(QWidget):
         if dlg.exec()!=QDialog.Accepted: return
         alias=dlg.alias()
         if not alias: return
-        self._users=add_user(alias)
+        try:
+            self._users=add_user(alias)
+        except StoreError as err:
+            store_warning(self,err); return
         slots=self._slots()
         if alias in slots: self._idx=slots.index(alias)
         self._update()
@@ -780,6 +805,8 @@ class MainWindow(QMainWindow):
         self.hex=HexModel(); self._question=""; self._current_user="Guest"
         self._moment_data={}; self._mode=self.MODE_OPENING; self._last_entry_id=None
         self._study_page=None
+        self._return_mode=self.MODE_OPENING   # main screen to go back to from reading/Study pages
+        self._back_btns=[]
         self._cast_started=False; self._cast_complete=False
         self._pending_manual_lines=None
         self._bg_pixmap=QPixmap(resource("opening_image.png"))
@@ -864,7 +891,7 @@ class MainWindow(QMainWindow):
         oc_vl.addWidget(self._v_split,1); self._main_stack.addWidget(oc)
 
         # Index 1: full reader
-        self._reader_browser=ZoomView(); self._main_stack.addWidget(self._reader_browser)
+        self._reader_browser=ZoomView(); self._main_stack.addWidget(self._with_back_bar(self._reader_browser))
         vl.addWidget(self._main_stack,1)
         self._status_bar=QStatusBar(); self.setStatusBar(self._status_bar)
         self._tabs.tabBar().setVisible(False)
@@ -881,7 +908,11 @@ class MainWindow(QMainWindow):
         jm.addSeparator()
         jm.addAction("&Export to PDF",            self._export_to_pdf,  "Ctrl+S")
         jm.addSeparator()
+        jm.addAction("&Back to Reading",          self._back_to_reading, "Ctrl+B")
+        jm.addSeparator()
         jm.addAction("&Quit", self.close,         "Ctrl+Q")
+        from PySide6.QtGui import QShortcut, QKeySequence
+        QShortcut(QKeySequence(Qt.Key_Escape), self, self._back_to_reading)
         mb.addAction("&Practice").triggered.connect(self._show_practice)
         sm=mb.addMenu("&Study")
         sm.addAction("Hexagram Wheel", self._set_mode_study)
@@ -920,7 +951,32 @@ class MainWindow(QMainWindow):
         self._apply_casting_style()
         self.update()
 
+    def _with_back_bar(self,page):
+        """Reading and Study pages get a slim bar back to the main screen they came from."""
+        box=QWidget(); vl=QVBoxLayout(box); vl.setContentsMargins(0,0,0,0); vl.setSpacing(0)
+        bar=QWidget(); bar.setStyleSheet("background:#eeeeec;border-bottom:1px solid #c0c0bc;")
+        hl=QHBoxLayout(bar); hl.setContentsMargins(8,4,8,4)
+        btn=QPushButton("◀  Back")
+        btn.setStyleSheet("QPushButton{background:#515150;color:#fff;border:none;"
+            "border-radius:4px;padding:5px 14px;font-size:12px;font-weight:bold;}"
+            "QPushButton:hover{background:#3a3a39;}")
+        btn.setToolTip("Back (Esc / Ctrl+B)"); btn.clicked.connect(self._back_to_reading)
+        hl.addWidget(btn); hl.addStretch(); self._back_btns.append(btn)
+        vl.addWidget(bar); vl.addWidget(page,1)
+        return box
+
+    def _leave_main_screen(self):
+        """Remember the main screen (opening / questions / reading) before covering it."""
+        if self._main_stack.currentIndex()==0: self._return_mode=self._mode
+        label="◀  Back to your reading" if self._return_mode==self.MODE_CASTING else "◀  Back"
+        for b in self._back_btns: b.setText(label)
+
+    def _back_to_reading(self):
+        if self._main_stack.currentIndex()==0: return
+        self._main_stack.setCurrentIndex(0); self._mode=self._return_mode; self.update()
+
     def _set_mode_reader(self,html,base_url=None):
+        self._leave_main_screen()
         self._mode=self.MODE_READER
         if base_url: self._reader_browser.setHtml(html,base_url)
         else: self._reader_browser.setHtml(html)
@@ -980,9 +1036,10 @@ class MainWindow(QMainWindow):
             "QTabBar::tab:selected{background:#515150;color:#fff;font-weight:bold;}")
 
     def _on_proceed(self,username,question,moment_data):
-        self._cast_started=False; self._cast_complete=False
+        self._cast_started=False; self._cast_complete=False; self._last_entry_id=None
         self._current_user=username; self._question=question; self._moment_data=moment_data
         self._cast_panel.set_alias(username)   # alias lives in CastPanel header
+        self._cast_panel.refresh_moon()
         self._cast_panel.reset()
         self._cast_panel.setEnabled(True)
         self._hex_display.clear()
@@ -1069,9 +1126,11 @@ class MainWindow(QMainWindow):
             self._study_id.setText("")
 
     def _set_mode_study(self):
+        self._leave_main_screen()
         if self._study_page is None:
-            self._study_page=self._build_study_page()
+            self._study_page=self._with_back_bar(self._build_study_page())
             self._main_stack.addWidget(self._study_page)   # index 2
+            self._leave_main_screen()                      # label the new bar's button too
         self._mode=self.MODE_STUDY
         self._main_stack.setCurrentWidget(self._study_page)
         self._status_bar.showMessage("Study:  spin, drag, or click the wheel",5000)
@@ -1110,6 +1169,7 @@ class MainWindow(QMainWindow):
 
     def _on_cast_done(self):
         self._cast_complete=True
+        self._moment_data["cast_method"]=self._cast_panel.cast_method()   # read by both journal save paths
         lines=self._cast_panel.get_lines()
         self.hex.set_lines(lines)
         hid=self.hex.hex_id()
@@ -1122,9 +1182,13 @@ class MainWindow(QMainWindow):
             msg+=f"  →  Hexagram {rid} — {HEX_NAMES.get(rid,'')}"
         if self._current_user!="Guest":
             from journal import auto_save_entry
-            self._last_entry_id=auto_save_entry(
-                self.hex,self._question,self._current_user,self._moment_data)
-            self._status_bar.showMessage(msg+"  ·  Entry saved to journal.")
+            try:
+                self._last_entry_id=auto_save_entry(
+                    self.hex,self._question,self._current_user,self._moment_data)
+                self._status_bar.showMessage(msg+"  ·  Entry saved to journal.")
+            except StoreError as err:
+                self._status_bar.showMessage(msg+"  ·  Journal unreadable — entry NOT saved.")
+                store_warning(self,err)
         else:
             self._status_bar.showMessage(msg)
 
@@ -1152,7 +1216,8 @@ class MainWindow(QMainWindow):
 
     def _view_journal(self):
         from journal import JournalView
-        jv=JournalView(self._current_user); jv.load_hex.connect(self._on_read_hex); jv.show(); jv.raise_()
+        jv=JournalView(self._current_user); keep_window(self,jv)
+        jv.load_hex.connect(self._show_study_hex); jv.show(); jv.raise_()   # reading page; never enters casting
 
     def _show_profile(self):
         from journal import ProfileDialog
@@ -1172,13 +1237,21 @@ class MainWindow(QMainWindow):
         if dlg.exec()!=QDialog.Accepted: return
         alias=dlg.alias()
         if not alias: return
-        add_user(alias)
+        try:
+            add_user(alias)
+        except StoreError as err:
+            store_warning(self,err); return
         self._current_user=alias
         self._user_panel.select_user(alias)
         ProfileDialog(alias,self).exec()
         if getattr(self,"_cast_complete",False) and self._last_entry_id is None:
-            self._last_entry_id=auto_save_entry(
-                self.hex,self._question,alias,self._moment_data)
+            try:
+                self._last_entry_id=auto_save_entry(
+                    self.hex,self._question,alias,self._moment_data)
+            except StoreError as err:
+                store_warning(self,err)
+                self._status_bar.showMessage(f"Profile '{alias}' created — reading NOT saved.")
+                return
             self._status_bar.showMessage(
                 f"Profile '{alias}' created — this reading saved as its first entry.")
         else:
@@ -1188,15 +1261,25 @@ class MainWindow(QMainWindow):
         # Guest with an unsaved completed reading: offer to keep it before exit.
         if (self._current_user=="Guest" and getattr(self,"_cast_complete",False)
                 and self._last_entry_id is None):
-            if QMessageBox.question(self,"Before You Go",
-                    "Would you like to create a user profile from the journal tab?",
-                    QMessageBox.Yes|QMessageBox.No)==QMessageBox.Yes:
-                ev.ignore(); self._create_profile_flow(); return
+            box=QMessageBox(QMessageBox.Question,"Before You Go",
+                "This reading hasn't been saved. Create a profile to keep it before closing?",
+                parent=self)
+            save=box.addButton("Save && Close",QMessageBox.AcceptRole)
+            box.addButton("Close Without Saving",QMessageBox.DestructiveRole)
+            cancel=box.addButton(QMessageBox.Cancel)
+            box.exec(); clicked=box.clickedButton()
+            if clicked is cancel:
+                ev.ignore(); return
+            if clicked is save:
+                self._create_profile_flow()
+                if self._last_entry_id is None:   # backed out of the new profile, or not saved
+                    ev.ignore(); return
         ev.accept()
 
     def _show_manual_cast(self):
         self._pending_manual_lines=None          # fresh dialog voids any held cast
-        dlg=ManualCastDialog(); dlg.cast_accepted.connect(self._on_manual_cast); dlg.show(); dlg.raise_()
+        dlg=ManualCastDialog(); keep_window(self,dlg)
+        dlg.cast_accepted.connect(self._on_manual_cast); dlg.show(); dlg.raise_()
 
     def _on_manual_cast(self,lines):
         """Hold the entered lines; they apply on Proceed so the questions form
@@ -1207,26 +1290,43 @@ class MainWindow(QMainWindow):
         self._status_bar.showMessage(
             "Manual cast held — answer the questions and proceed.",6000)
 
+    def _pdf_view(self):
+        """The web view the user is looking at, if it holds a reading; else None."""
+        if self._main_stack.currentIndex()==1:
+            return self._reader_browser                     # full reading / study / content page
+        if self._main_stack.currentIndex()==0:
+            tab=self._tabs.currentWidget()
+            if isinstance(tab,BookBrowser) and tab._active:
+                return tab.browser                          # reader tab holding a hexagram
+        return None
+
     def _export_to_pdf(self):
         from PySide6.QtWidgets import QFileDialog
         from datetime import datetime
+        view=self._pdf_view()
+        if view is None:
+            QMessageBox.information(self,"Export to PDF","Open a hexagram reading first."); return
         timestamp=datetime.now().strftime("%Y%m%d_%H%M%S")
         default_name=f"yijing_reading_{timestamp}.pdf"
         path,_=QFileDialog.getSaveFileName(
             self,"Export Reading to PDF",default_name,
             "PDF files (*.pdf);;All files (*)")
         if not path: return
-        if not path.endswith(".pdf"): path+=".pdf"
-        tab_idx=self._tabs.currentIndex()
-        browsers=list(self._browsers.values())
-        if 0<=tab_idx<len(browsers):
-            browsers[tab_idx].browser.page().printToPdf(path)
-            self._status_bar.showMessage(f"Exported to {path}",4000)
-        else:
-            QMessageBox.information(self,"Export to PDF","Open a hexagram reading first.")
+        if not path.lower().endswith(".pdf"): path+=".pdf"
+        page=view.page()
+        def done(file_path,ok):                             # printToPdf finishes in the background
+            page.pdfPrintingFinished.disconnect(done)
+            if ok: self._status_bar.showMessage(f"Exported to {file_path}",4000)
+            else:
+                self._status_bar.clearMessage()
+                QMessageBox.warning(self,"Export to PDF",f"The PDF could not be written to:\n{file_path}")
+        page.pdfPrintingFinished.connect(done)
+        self._status_bar.showMessage("Exporting PDF…")
+        page.printToPdf(path)
 
     def _show_trigram_lookup(self):
-        dlg=TrigramLookup(); dlg.load_hex.connect(self._show_study_hex); dlg.show(); dlg.raise_()
+        dlg=TrigramLookup(); keep_window(self,dlg)
+        dlg.load_hex.connect(self._show_study_hex); dlg.show(); dlg.raise_()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1365,16 +1465,10 @@ class ManualCastDialog(QWidget):
 
     def _update_preview(self):
         lines=[s['value'] for s in self._selectors]
-        try:
-            tmap={(True,True,True):1,(False,True,True):2,(True,False,True):3,
-                  (False,False,True):4,(True,True,False):5,(False,True,False):6,
-                  (True,False,False):7,(False,False,False):8}
-            def tri(l1,l2,l3): return tmap.get((l1%2==1,l2%2==1,l3%2==1),1)
-            inf=tri(lines[0],lines[1],lines[2]); sup=tri(lines[3],lines[4],lines[5])
-            hid=HEX_TABLE.get((sup,inf),1); moving=[i+1 for i,v in enumerate(lines) if v in (6,9)]
-            mv=f"  Moving: {moving}" if moving else "  No moving lines"
-            self._preview.setText(f"{HEX_CHARS.get(hid,'')} {hid}. {HEX_NAMES.get(hid,'')}{mv}")
-        except Exception: self._preview.setText("—")
+        hm=HexModel(); hm.lines=lines
+        hid=hm.hex_id(); moving=[i+1 for i,v in enumerate(lines) if v in (6,9)]
+        mv=f"  Moving: {moving}" if moving else "  No moving lines"
+        self._preview.setText(f"{HEX_CHARS.get(hid,'')} {hid}. {HEX_NAMES.get(hid,'')}{mv}")
 
     def _accept(self):
         self.cast_accepted.emit([s['value'] for s in self._selectors]); self.close()
@@ -1386,6 +1480,10 @@ class ManualCastDialog(QWidget):
 def main():
     app=QApplication(sys.argv)
     app.setApplicationName(APP_NAME); app.setApplicationVersion(APP_VER)
+    app.setDesktopFileName(APP_ID)   # links the window to its .desktop launcher (panel icon, Wayland app_id)
+    icon=QIcon()
+    for size in (64,128,256): icon.addFile(resource(f"icon_{size}.png"))
+    app.setWindowIcon(icon)
     _ukai_id=QFontDatabase.addApplicationFont(resource("ukai_yijing.ttf"))
     if _ukai_id<0: print("Warning: AR PL UKai CN font could not be loaded")
     _aoyagi_id=QFontDatabase.addApplicationFont(resource("aoyagi_yijing.ttf"))

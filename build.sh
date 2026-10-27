@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # ══════════════════════════════════════════════════════════════════════════════
 # The YiJing (I Ching) — Navigating Change — Flatpak Build Script
+# Script version 1.0.2 — Wednesday 28 October 2026
 # Run from build directory:
 #   ./build.sh            build the .flatpak bundle only (default — repo-safe)
 #   ./build.sh --install  build, then install to the user Flatpak
@@ -61,21 +62,24 @@ pyinstaller \
 # ── Step 2: Flatpak structure ─────────────────────────────────────────────────
 rm -rf "$WORKDIR" "$REPO"
 
+# Desktop file, icons and metainfo live in files/share (where the AppStream
+# compose step reads them) and are copied to export/share (what the desktop sees).
+SHARE="$WORKDIR/files/share"
 mkdir -p "$WORKDIR/files/bin" \
-         "$WORKDIR/export/share/applications" \
-         "$WORKDIR/export/share/icons/hicolor/256x256/apps" \
-         "$WORKDIR/export/share/icons/hicolor/128x128/apps" \
-         "$WORKDIR/export/share/icons/hicolor/64x64/apps" \
-         "$WORKDIR/export/share/metainfo"
+         "$SHARE/applications" \
+         "$SHARE/icons/hicolor/256x256/apps" \
+         "$SHARE/icons/hicolor/128x128/apps" \
+         "$SHARE/icons/hicolor/64x64/apps" \
+         "$SHARE/metainfo"
 
 cp dist/YiJingNavigatingChange "$WORKDIR/files/bin/"
 chmod +x "$WORKDIR/files/bin/YiJingNavigatingChange"
 
-cp icon_256.png "$WORKDIR/export/share/icons/hicolor/256x256/apps/${APP_ID}.png"
-cp icon_128.png "$WORKDIR/export/share/icons/hicolor/128x128/apps/${APP_ID}.png"
-cp icon_64.png  "$WORKDIR/export/share/icons/hicolor/64x64/apps/${APP_ID}.png"
+cp icon_256.png "$SHARE/icons/hicolor/256x256/apps/${APP_ID}.png"
+cp icon_128.png "$SHARE/icons/hicolor/128x128/apps/${APP_ID}.png"
+cp icon_64.png  "$SHARE/icons/hicolor/64x64/apps/${APP_ID}.png"
 
-cat > "$WORKDIR/export/share/applications/${APP_ID}.desktop" << DESK
+cat > "$SHARE/applications/${APP_ID}.desktop" << DESK
 [Desktop Entry]
 Type=Application
 Name=The YiJing (I Ching) — Navigating Change
@@ -83,11 +87,12 @@ GenericName=YiJing Oracle
 Comment=Cast hexagrams and consult the Book of Changes
 Exec=YiJingNavigatingChange
 Icon=${APP_ID}
-Categories=Utility;Education;
+Categories=Education;Literature;
+StartupWMClass=YiJingNavigatingChange
 Terminal=false
 DESK
 
-cat > "$WORKDIR/export/share/metainfo/${APP_ID}.metainfo.xml" << META
+cat > "$SHARE/metainfo/${APP_ID}.metainfo.xml" << META
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
   <id>${APP_ID}</id>
@@ -95,7 +100,7 @@ cat > "$WORKDIR/export/share/metainfo/${APP_ID}.metainfo.xml" << META
   <summary>Cast hexagrams and consult the Book of Changes</summary>
   <launchable type="desktop-id">${APP_ID}.desktop</launchable>
   <developer id="io.archerprojects"><name>archerprojects</name></developer>
-  <url type="homepage">https://github.com/archerprojects/YiJingNavigatingChange</url>
+  <url type="homepage">https://github.com/archerprojects/The-Yi-Jing---Navigating-Change</url>
   <content_rating type="oars-1.1"/>
   <metadata_license>MIT</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
@@ -108,6 +113,16 @@ cat > "$WORKDIR/export/share/metainfo/${APP_ID}.metainfo.xml" << META
 </component>
 META
 
+# AppStream catalogue (what software centres read) into files/share/app-info
+appstreamcli compose --prefix=/ --origin="${APP_ID}" --components="${APP_ID}" \
+    --result-root="$WORKDIR/files" \
+    --data-dir="$SHARE/app-info/xmls" \
+    --icons-dir="$SHARE/app-info/icons/flatpak" \
+    "$WORKDIR/files"
+
+mkdir -p "$WORKDIR/export/share"
+cp -r "$SHARE/applications" "$SHARE/icons" "$SHARE/metainfo" "$WORKDIR/export/share/"
+
 cat > "$WORKDIR/metadata" << 'META'
 [Application]
 name=io.archerprojects.YiJingNavigatingChange
@@ -117,7 +132,7 @@ command=YiJingNavigatingChange
 
 [Context]
 shared=ipc;
-sockets=x11;wayland;fallback-x11;
+sockets=wayland;fallback-x11;
 devices=dri;
 filesystems=home;
 META

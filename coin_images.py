@@ -2,6 +2,7 @@
 coin_images.py — Chinese cash coin animation frames
 Image data: Copyright (C) 1999-2006 Stephen M. Gava (pyChing), GPL-2.0
 Adapted for The YiJing — Navigating Change by archerprojects, 2026, GPL-3.0
+Version 1.0.2 — Wednesday 28 October 2026
 """
 
 # COIN_FRAMES: animation frames 0-13, then yin(tails), yang(heads), blank

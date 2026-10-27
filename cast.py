@@ -5,11 +5,11 @@ cast.py — Casting panel, coin and yarrow widgets
 Imported lazily by yijing_main.py — never at module level.
 LineWidget imported directly by HexDisplay.
 
-Version 2.8.44
+Version 1.0.2 — Wednesday 28 October 2026
 GNU GPL v3
 """
 
-import os, sys, re, base64, random, time
+import os, sys, re, base64, random, time, json, hashlib
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
@@ -21,6 +21,20 @@ from PySide6.QtGui import QPainter, QPen, QColor, QPixmap
 def _resource(rel):
     base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base, rel)
+
+
+def cast_seed(ms, x, y, context=None):
+    """
+    Seed for one coin line or one yarrow division: the moment (ms) and place
+    (x, y) of the act. `context` is where the rest of the moment will be folded
+    in later (question, mood, cycle states…); it changes which cast arises,
+    never the traditional odds. With no context the seed is the moment alone.
+    """
+    seed = ms ^ (int(x) << 16) ^ int(y)
+    if context:
+        blob = json.dumps(context, sort_keys=True, ensure_ascii=False, default=str)
+        seed ^= int.from_bytes(hashlib.sha256(blob.encode("utf-8")).digest()[:8], "big")
+    return seed
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -64,7 +78,7 @@ class LineWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._value = None
-        self.setFixedSize(self.LINE_W, self.LINE_H)
+        self.setFixedSize(self.LINE_W + 20, self.LINE_H)   # bar + room for the moving-line marker
 
     def set_value(self, v):
         self._value = v
@@ -136,8 +150,8 @@ class CoinWidget(QLabel):
         self._show(frame)
 
     def show_result(self, value):
-        # value 2=tails→frame 12, value 3=heads→frame 13
-        frame = 12 if value == 2 else 13
+        # value 2=tails→frame 14 (YIN), value 3=heads→frame 15 (YANG)
+        frame = 14 if value == 2 else 15
         self._show(min(frame, len(self._pixmaps) - 1))
 
     def show_rest(self):
@@ -165,6 +179,10 @@ class _CoinCastPanel(QWidget):
 
         self._timer = QTimer()
         self._timer.timeout.connect(self._anim_step)
+        # gap between lines in Cast All — owned so reset() can cancel it
+        self._gap_timer = QTimer(self)
+        self._gap_timer.setSingleShot(True)
+        self._gap_timer.timeout.connect(self._start_animation)
         self._build()
 
     def _build(self):
@@ -234,6 +252,7 @@ class _CoinCastPanel(QWidget):
         self._animating        = False
         self._cast_all_pending = []
         self._timer.stop()
+        self._gap_timer.stop()
         for cw in self._coins:
             cw.show_rest()
         for lw in self._line_widgets:
@@ -276,9 +295,9 @@ class _CoinCastPanel(QWidget):
         self._anim_frame   = 0
         from PySide6.QtGui import QCursor
         pos  = QCursor.pos()
-        seed = int(time.time() * 1000) ^ (pos.x() << 16) ^ pos.y()
-        random.seed(seed)
-        self._coin_vals      = [random.choice([2, 3]) for _ in range(3)]
+        seed = cast_seed(int(time.time() * 1000), pos.x(), pos.y())
+        rng  = random.Random(seed)   # this line's own generator: the moment and cursor of the cast
+        self._coin_vals      = [rng.choice([2, 3]) for _ in range(3)]
         self._pending_result = sum(self._coin_vals)
         self._timer.start(20)
 
@@ -313,7 +332,7 @@ class _CoinCastPanel(QWidget):
             self._complete()
         elif self._cast_all_pending:
             self._cast_all_pending.pop(0)
-            QTimer.singleShot(800, self._start_animation)
+            self._gap_timer.start(800)
         else:
             n = len(self._lines) + 1
             self._btn_line.setText(f"Cast Line {n} of 6")
@@ -383,10 +402,20 @@ class CastPanel(QWidget):
     def __init__(self, hex_model, parent=None):
         super().__init__(parent)
         self.hex = hex_model
+        self._manual = False   # current lines came from Manual Cast Entry
         self._build()
 
     def set_alias(self, name):
         self._alias_lbl.setText(name if name != "Guest" else "")
+
+    def refresh_moon(self):
+        """Current moon phase in the header — refreshed at each new reading."""
+        from journal import moon_phase
+        phase = moon_phase()
+        icon, _, name = phase.partition(" ")
+        self._moon_icon_lbl.setText(icon)
+        self._moon_icon_lbl.setToolTip(phase)
+        self._moon_name_lbl.setText(name)
 
     def _build(self):
         vl = QVBoxLayout(self)
@@ -410,23 +439,16 @@ class CastPanel(QWidget):
         header_row.addWidget(self._alias_lbl)
         header_row.addStretch()
 
-        from journal import moon_phase as _moon_phase
-        _phase = _moon_phase()
-        _parts = _phase.split(" ", 1)
-        _icon  = _parts[0] if _parts else _phase
-        _name  = _parts[1] if len(_parts) > 1 else ""
-
         moon_col = QVBoxLayout()
         moon_col.setSpacing(0)
         moon_col.setContentsMargins(0, 0, 0, 0)
 
-        self._moon_icon_lbl = QLabel(_icon)
+        self._moon_icon_lbl = QLabel()
         self._moon_icon_lbl.setStyleSheet("font-size:49px;background:transparent;")
         self._moon_icon_lbl.setAlignment(Qt.AlignHCenter)
-        self._moon_icon_lbl.setToolTip(_phase)
         moon_col.addWidget(self._moon_icon_lbl)
 
-        self._moon_name_lbl = QLabel(_name)
+        self._moon_name_lbl = QLabel()
         self._moon_name_lbl.setStyleSheet(
             "font-size:10px;color:#777777;background:transparent;")
         self._moon_name_lbl.setAlignment(Qt.AlignHCenter)
@@ -434,6 +456,7 @@ class CastPanel(QWidget):
 
         header_row.addLayout(moon_col)
         vl.addLayout(header_row)
+        self.refresh_moon()
 
         # ── Mode toggle ───────────────────────────────────────────────────────
         toggle_row = QHBoxLayout()
@@ -473,7 +496,14 @@ class CastPanel(QWidget):
     def current_method(self):
         return self._stack.currentIndex()
 
+    def cast_method(self):
+        """How the current lines were cast: 'manual', 'coin' or 'yarrow'."""
+        if self._manual:
+            return "manual"
+        return "coin" if self._stack.currentIndex() == 0 else "yarrow"
+
     def apply_method(self, index):
+        self._manual = False
         self._stack.setCurrentIndex(index)
         if index == 0:
             self._title_lbl.setText("Cast by Coin")
@@ -485,6 +515,7 @@ class CastPanel(QWidget):
             self._yarrow_btn.setStyleSheet(self._TOGGLE_ON)
 
     def reset(self):
+        self._manual = False
         self._coin_panel.reset()
         self._yarrow_panel.reset()
 
@@ -497,5 +528,6 @@ class CastPanel(QWidget):
         """Apply a manually entered cast: coin panel displays the six lines,
         casting locks, and cast_done fires through the normal completion path."""
         self.apply_method(0)
+        self._manual = True
         self._title_lbl.setText("Manual Cast Entry")
         self._coin_panel.apply_manual(lines)

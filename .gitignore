@@ -22,3 +22,7 @@ Thumbs.db
 *~
 .idea/
 .vscode/
+
+# ── CLAUDE.md required ───────────────────────────────────────
+target/
+node_modules/
