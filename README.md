@@ -67,7 +67,6 @@ changing to Hexagram 3 (屯 Zhūn, Difficulty):*
 ![Completed reading](screenshots/reading.jpg)
 
 ---
-
 ## Architecture
 
 The application is built with **Python 3 / PySide6** (Qt for Python). Translation
