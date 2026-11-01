@@ -55,7 +55,7 @@ network connection or any external service.
 
 *The opening screen — select a profile and bring a question to the oracle:*
 
-\
+![Opening screen](screenshots/opening.jpg)
 
 *A new coin cast, ready to begin:*
 
