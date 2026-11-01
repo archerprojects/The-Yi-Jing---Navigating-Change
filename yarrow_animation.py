@@ -6,7 +6,7 @@ Imported lazily by cast.py. Never imported at module level.
 Self-contained: owns all narration text, animation logic, and QPainter rendering.
 Emits line_cast(int, int, list) and cast_done() — identical signature to coin panel.
 
-Version 1.0.2 — Wednesday 28 October 2026
+Version 1.0.3 — Sunday 1 November 2026
 GNU GPL v3
 """
 
@@ -35,7 +35,7 @@ _NARRATION = {
     ),
     "sorting":  "Counting in groups of four…",
     "round_done": "Round {round} complete — {count} stalks set aside.",
-    "line_done":  "Line {line} cast: {name}\n\nClick to continue.",
+    "line_done":  "Line {line} cast: {name}",
     "complete":   "All six lines cast. The hexagram is complete.",
 }
 
@@ -47,7 +47,6 @@ _LINE_NAMES = {
 }
 
 # ── Palette ───────────────────────────────────────────────────────────────────
-_C_HIGHLIGHT = QColor(0xE8, 0xC8, 0x80)
 _C_TEXT      = QColor(0x8B, 0x1A, 0x1A)
 _C_STATUS    = QColor(0x33, 0x33, 0x33)
 
@@ -79,15 +78,6 @@ def _click_seed(event):
     from cast import cast_seed      # cast.py has already loaded this module
     p = event.position()
     return cast_seed(int(time.time() * 1000), p.x(), p.y())
-
-
-def _cast_line(rng):
-    """Three divisions from one generator. Returns (line_value, [c1,c2,c3], (r1,r2,r3))."""
-    r1 = _division(rng, 49, True)
-    r2 = _division(rng, 49 - r1[1], False)
-    r3 = _division(rng, r2[6] - r2[1], False)
-    counts = [r1[0], r2[0], r3[0]]
-    return sum(counts), counts, (r1, r2, r3)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -244,7 +234,6 @@ class YarrowAnimWidget(QWidget):
 
     line_cast = Signal(int, int, list)
     cast_done = Signal()
-    started   = Signal()
 
     _IDLE       = "idle"
     _DIVIDE     = "divide"
@@ -259,12 +248,11 @@ class YarrowAnimWidget(QWidget):
     _BUNDLE_DX = 36     # working-bundle centre offset from left pad
 
     _INFO = (
-        "The Yarrow Stalk Method — a more ancient method than coins. "
-        "Using the coin toss, every line type is equally likely. "
-        "Sorting yarrow stalks weights them unequally. Early diviners "
-        "understood the cosmos as a moving yin line (Old Yin) being rare, "
-        "just 1 in 16. This weighting is the reason behind the different "
-        "methods. Full probability table in Study \u25b8 Practice. "
+        "Yarrow Stalks — an older method than the coins. "
+        "With three coins the four line types fall 1, 3, 3 and 1 times in 8. "
+        "Sorting the stalks weights them differently: Old Yin, the moving "
+        "yin line, comes just 1 time in 16. "
+        "The full probability table is under Practice. "
         "Click the stalks to begin."
     )
 
@@ -332,7 +320,6 @@ class YarrowAnimWidget(QWidget):
 
     def _on_click(self, seed=None):
         if self._step == self._IDLE:
-            self.started.emit()
             self._begin_line()
         elif self._step == self._DIVIDE:
             self._do_divide(seed)
@@ -365,7 +352,7 @@ class YarrowAnimWidget(QWidget):
         _, _, east, west, _, _, pool = rd
         self._main_count  = 0
         self._left_count  = east
-        self._right_count = west
+        self._right_count = west + 1   # the finger stalk is taken from this heap first
         self._step        = self._SORTING
         self._anim_phase  = 0
         self._anim_timer.start(self._speed_ms)
@@ -430,14 +417,7 @@ class YarrowAnimWidget(QWidget):
             self.update()
             self.cast_done.emit()
         else:
-            self._step          = self._IDLE
-            self._main_count    = 49
-            self._left_count    = 0
-            self._right_count   = 0
-            self._finger        = [0, 0, 0]
-            self._result_counts = [0, 0, 0]
-            self._round_idx     = 0
-            self.update()
+            self._begin_line()          # the click that accepts a line starts the next
 
     # ── Painting ─────────────────────────────────────────────────────────────
 
@@ -519,12 +499,7 @@ class YarrowAnimWidget(QWidget):
         r   = _draw_bundle(painter, cx, top, 49, highlight=self._hover)
         self._clickable_rects = [QRect(0, 0, w, h)]
         self._label(painter, "49", cx, r.bottom() + 16, bold=True)
-        if len(self._lines) == 0:
-            self._status_left(painter, self._INFO, r.bottom() + 32, w)
-        else:
-            line_n = len(self._lines) + 1
-            self._status_left(painter, f"Line {line_n} of 6 — " + _NARRATION["divide"],
-                              r.bottom() + 32, w)
+        self._status_left(painter, self._INFO, r.bottom() + 32, w)
 
     def _draw_divide(self, painter, w, h):
         cx  = self._bundle_cx()
@@ -533,7 +508,8 @@ class YarrowAnimWidget(QWidget):
         self._clickable_rects = [QRect(0, 0, w, h)]
         self._label(painter, str(self._main_count), cx, r.bottom() + 16, bold=True)
         rn = self._round_idx + 1
-        self._status_left(painter, f"Round {rn} of 3 — " + _NARRATION["divide"],
+        ln = len(self._lines) + 1
+        self._status_left(painter, f"Line {ln} of 6, round {rn} of 3 — " + _NARRATION["divide"],
                           r.bottom() + 32, w)
         self._draw_results(painter, w)
 
@@ -626,9 +602,8 @@ class YarrowPanel(QWidget):
 
     _SPEEDS = [("Slow", 600), ("Med", 250), ("Fast", 80)]
 
-    def __init__(self, hex_model, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.hex = hex_model
         self._build()
 
     def _build(self):

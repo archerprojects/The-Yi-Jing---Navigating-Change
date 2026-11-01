@@ -1,6 +1,6 @@
 """
 The YiJing (I Ching) — Navigating Change
-Version 1.0.2 — Wednesday 28 October 2026
+Version 1.0.3 — Sunday 1 November 2026
 
 Python/PySide6 port of iching-0.2 by Jean Pierre Charalambos (2002).
 Coin casting engine from pyChing by Stephen M. Gava (1999-2006).
@@ -10,12 +10,11 @@ Port and redesign: rjv, 2026 — GNU GPL v3
 
 # ── Application Identity ──────────────────────────────────────────────────────
 APP_NAME    = "The YiJing (I Ching) — Navigating Change"
-APP_VER     = "1.0.2"
+APP_VER     = "1.0.3"
 APP_DEV     = "archerprojects"
 APP_CONTACT = "archer.projects@proton.me"
 APP_ID      = "io.archerprojects.YiJingNavigatingChange"
 APP_LICENSE = "GPL-3.0-or-later"
-AOYAGI_FAMILY = "aoyagireisyosimo2"   # read back from font at startup; fallback to known subset name
 # Reader sources: (key, book-dir author, tab label)
 SOURCES = [
     ("wilhelm",  "wilhelm",  "Wilhelm"),
@@ -78,6 +77,7 @@ HEX_CHARS = {
     49:"革",50:"鼎",51:"震",52:"艮",53:"漸",54:"歸妹",55:"豐",56:"旅",
     57:"巽",58:"兌",59:"渙",60:"節",61:"中孚",62:"小過",63:"既濟",64:"未濟",
 }
+LINE_TYPE_NAMES = {6:"Old Yin", 7:"Young Yang", 8:"Young Yin", 9:"Old Yang"}
 HEX_TABLE = {}
 def _build_hex_table():
     data = [
@@ -157,9 +157,6 @@ class HexDisplay(QWidget):
     read_hex = Signal(int)
     width_hint = Signal(int)   # emits content width when columns change
 
-    # Fixed content rows outside the 6 line widgets:
-    # title(1) + divider(1) + tri_header(1) + tri_glyph(1) + tri_image(1) + tri_nature(1) + read_btn(1) = 7
-    _FIXED_ROWS   = 7
     _TITLE_H      = 20   # px reserved for title row
     _DIV_H        = 8    # px for divider
     _TRI_ROW_H    = 22   # px per trigram row (3 rows)
@@ -182,7 +179,7 @@ class HexDisplay(QWidget):
         main.setSpacing(0)
 
         self._prim_widget, self._prim_title, self._prim_lines, \
-            self._prim_tri, self._prim_read_btn, self._prim_tri_grid = self._make_col()
+            self._prim_tri, self._prim_read_btn = self._make_col()
         main.addWidget(self._prim_widget, 0)
 
         main.addSpacing(10)
@@ -195,7 +192,7 @@ class HexDisplay(QWidget):
         main.addSpacing(10)
 
         self._rel_widget, self._rel_title, self._rel_lines, \
-            self._rel_tri, self._rel_read_btn, self._rel_tri_grid = self._make_col()
+            self._rel_tri, self._rel_read_btn = self._make_col()
         self._rel_widget.setVisible(False)
         main.addWidget(self._rel_widget, 0)
 
@@ -270,7 +267,7 @@ class HexDisplay(QWidget):
         read_btn.setEnabled(False)
         vl.addWidget(read_btn)
 
-        return outer, title, lines, tri_labels, read_btn, tri_grid
+        return outer, title, lines, tri_labels, read_btn
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -416,6 +413,16 @@ class BookBrowser(QWidget):
         self.browser.setHtml(html,QUrl.fromLocalFile(path))
         QTimer.singleShot(0, lambda: self.browser.page().setBackgroundColor(QColor(0,0,0,0)))
 
+    def load_guide(self):
+        """User Guide in the reader from Proceed until the first line is cast."""
+        from PySide6.QtCore import QUrl
+        path=resource(os.path.join("content","help.html"))
+        try:
+            with open(path,encoding="utf-8") as f: html=f.read().replace("%%APP_VER%%",APP_VER)
+        except Exception as e: html=f"<p>Could not load the User Guide: {e}</p>"
+        self._bar_widget.setVisible(False)     # Prev/Next return with the hexagram text
+        self.browser.setHtml(html,QUrl.fromLocalFile(path))
+
     def _on_hex_changed(self):
         if self._active:
             self._current_hex_id=self.hex.hex_id()
@@ -436,6 +443,7 @@ class BookBrowser(QWidget):
         self._section=(self._section+delta)%len(self._pages()); self._load()   # wraps both ways
 
     def _load(self):
+        self._bar_widget.setVisible(True)
         hid=self._current_hex_id; pages=self._pages()
         self._section%=len(pages); fname=pages[self._section]
         path=os.path.join(BOOK_DIR,"en",self._author,f"hex{hid}",fname)
@@ -528,7 +536,6 @@ class NewUserDialog(QDialog):
 # ══════════════════════════════════════════════════════════════════════════════
 class OpeningUserPanel(QWidget):
     user_selected=Signal(bool)
-    _PANEL_BG="transparent"
     _BTN_GHOST=("QPushButton{background:rgba(255,255,255,0.12);color:#e8d8a0;"
                 "border:1px solid rgba(200,180,100,0.50);border-radius:5px;"
                 "font-size:13px;padding:6px 12px;}"
@@ -674,7 +681,7 @@ class OpeningFormPanel(QWidget):
         self._bg_pixmap=QPixmap(resource("opening_image.png"))
         self._show_bg=False
         self._build()
-        user_panel.user_selected.connect(self._on_user_selected)
+        user_panel.user_selected.connect(self.set_user_ready)
 
     def set_show_bg(self,show):
         self._show_bg=show; self.update()
@@ -720,9 +727,6 @@ class OpeningFormPanel(QWidget):
         self._proc_btn.setStyleSheet(self._PROC_OFF); self._proc_btn.setEnabled(False)
         self._proc_btn.clicked.connect(self._on_proceed); pr.addWidget(self._proc_btn)
         vl.addLayout(pr)
-
-    def _on_user_selected(self,ready):
-        self._user_ready=ready; self._check_proc_enabled()
 
     def set_user_ready(self,ready):
         self._user_ready=ready; self._check_proc_enabled()
@@ -806,6 +810,7 @@ class MainWindow(QMainWindow):
         self._moment_data={}; self._mode=self.MODE_OPENING; self._last_entry_id=None
         self._study_page=None
         self._return_mode=self.MODE_OPENING   # main screen to go back to from reading/Study pages
+        self._back_to_study=False             # a hexagram page opened from the Wheel goes back to it
         self._back_btns=[]
         self._cast_started=False; self._cast_complete=False
         self._pending_manual_lines=None
@@ -836,10 +841,9 @@ class MainWindow(QMainWindow):
         self._left_stack=_CurrentPageStack()
         self._user_panel=OpeningUserPanel(); self._left_stack.addWidget(self._user_panel)
         from cast import CastPanel
-        self._cast_panel=CastPanel(self.hex)
+        self._cast_panel=CastPanel()
         self._cast_panel.line_cast.connect(self._on_line_cast)
         self._cast_panel.cast_done.connect(self._on_cast_done)
-        self._cast_panel.new_reading.connect(self._new_reading)
         self._cast_panel.method_requested.connect(self._on_method_requested)
         self._cast_panel.setMinimumWidth(280); self._left_stack.addWidget(self._cast_panel)
         self._left_stack.setCurrentIndex(0); self._top_split.addWidget(self._left_stack)
@@ -891,7 +895,10 @@ class MainWindow(QMainWindow):
         oc_vl.addWidget(self._v_split,1); self._main_stack.addWidget(oc)
 
         # Index 1: full reader
-        self._reader_browser=ZoomView(); self._main_stack.addWidget(self._with_back_bar(self._reader_browser))
+        self._reader_browser=ZoomView()
+        self._reader_browser.page().navigationRequested.connect(self._on_reader_navigation)
+        self._main_stack.addWidget(self._with_back_bar(self._reader_browser))
+        self._reader_back_btn=self._back_btns[-1]
         vl.addWidget(self._main_stack,1)
         self._status_bar=QStatusBar(); self.setStatusBar(self._status_bar)
         self._tabs.tabBar().setVisible(False)
@@ -973,10 +980,14 @@ class MainWindow(QMainWindow):
 
     def _back_to_reading(self):
         if self._main_stack.currentIndex()==0: return
+        if self._back_to_study and self._main_stack.currentIndex()==1:
+            self._set_mode_study(); return
         self._main_stack.setCurrentIndex(0); self._mode=self._return_mode; self.update()
 
-    def _set_mode_reader(self,html,base_url=None):
+    def _set_mode_reader(self,html,base_url=None,from_study=False):
         self._leave_main_screen()
+        self._back_to_study=from_study
+        if from_study: self._reader_back_btn.setText("◀  Back to the Wheel")
         self._mode=self.MODE_READER
         if base_url: self._reader_browser.setHtml(html,base_url)
         else: self._reader_browser.setHtml(html)
@@ -1053,6 +1064,8 @@ class MainWindow(QMainWindow):
             self._cast_started=True
             self._cast_panel.apply_manual(lines)   # emits cast_done -> journal auto-save
         else:
+            for b in self._browsers.values():
+                b.load_guide()
             self._status_bar.showMessage(
                 "Welcome{}.  Cast a hexagram to begin.".format(
                     ", "+username if username!="Guest" else ""),5000)
@@ -1126,7 +1139,7 @@ class MainWindow(QMainWindow):
             self._study_id.setText("")
 
     def _set_mode_study(self):
-        self._leave_main_screen()
+        self._leave_main_screen(); self._back_to_study=False
         if self._study_page is None:
             self._study_page=self._with_back_bar(self._build_study_page())
             self._main_stack.addWidget(self._study_page)   # index 2
@@ -1137,6 +1150,8 @@ class MainWindow(QMainWindow):
 
     def _show_study_hex(self,hex_id):
         from PySide6.QtCore import QUrl
+        from_study=(self._study_page is not None
+                    and self._main_stack.currentWidget() is self._study_page)
         path=os.path.join(BOOK_DIR,"en","wilhelm",f"hex{hex_id}",f"hex{hex_id}_0.html")
         if not os.path.exists(path):
             self._status_bar.showMessage(f"File not found for hex {hex_id}",3000); return
@@ -1150,8 +1165,23 @@ class MainWindow(QMainWindow):
             from hexfig import inject_hex_figure; html=inject_hex_figure(html,hex_id,size=28)
         except Exception: pass
         self._set_mode_reader(html,QUrl.fromLocalFile(
-            os.path.join(BOOK_DIR,"en","wilhelm",f"hex{hex_id}")+os.sep))
-        self._status_bar.showMessage(f"Study:  Hexagram {hex_id} — {HEX_NAMES.get(hex_id,'')}",6000)
+            os.path.join(BOOK_DIR,"en","wilhelm",f"hex{hex_id}")+os.sep),from_study=from_study)
+        self._status_bar.showMessage(f"Hexagram {hex_id} — {HEX_NAMES.get(hex_id,'')}",6000)
+
+    def _on_reader_navigation(self,request):
+        """A hexagram link on a full reading page opens that hexagram's styled
+        overview, with its figure, in place of the raw linked file."""
+        from PySide6.QtCore import QTimer
+        m=re.search(r'hex(\d+)/hex\1_(?:\d|all)\.html$',request.url().toLocalFile().replace(os.sep,'/'))
+        if m:
+            # load after this callback returns — loading inside it aborts QtWebEngine
+            request.reject(); hid=int(m.group(1))
+            QTimer.singleShot(0, lambda h=hid,s=self._back_to_study: self._follow_reader_link(h,s))
+
+    def _follow_reader_link(self,hex_id,back_to_study):
+        self._show_study_hex(hex_id)
+        self._back_to_study=back_to_study
+        if back_to_study: self._reader_back_btn.setText("◀  Back to the Wheel")
 
     def _on_read_hex(self,hex_id):
         if self._mode!=self.MODE_CASTING: self._set_mode_casting()
@@ -1164,8 +1194,10 @@ class MainWindow(QMainWindow):
         self._right_stack.setCurrentIndex(1)
         self.hex.lines[line_idx]=value
         self.hex.changed.emit()
-        t=('moving yin' if value==6 else 'yang' if value==7 else 'yin' if value==8 else 'moving yang')
-        self._status_bar.showMessage(f"Line {line_idx+1} cast — coins: {coin_vals} = {value} ({t})",4000)
+        t=LINE_TYPE_NAMES.get(value,"")
+        how=("stalks" if self._cast_panel.cast_method()=="yarrow" else "coins")
+        self._status_bar.showMessage(
+            f"Line {line_idx+1} cast — {how}: {', '.join(str(c) for c in coin_vals)} = {value} ({t})",4000)
 
     def _on_cast_done(self):
         self._cast_complete=True
@@ -1200,7 +1232,14 @@ class MainWindow(QMainWindow):
             msg+=f"  →  Hexagram {rid} — {HEX_NAMES.get(rid,'')}"
         self.setWindowTitle(f"{APP_NAME}  [{msg}]")
 
-    def _new_reading(self): self._set_mode_new_reading()
+    def _new_reading(self):
+        if self._user_panel.current_user() is None:
+            # nobody chosen yet: the opening screen's picker and questions are the way in
+            self._main_stack.setCurrentIndex(0); self._mode=self.MODE_OPENING; self.update()
+            self._status_bar.showMessage(
+                "Choose who is consulting, then answer the questions to proceed.",6000)
+            return
+        self._set_mode_new_reading()
 
     def _on_method_requested(self, index):
         if index == self._cast_panel.current_method():
@@ -1209,7 +1248,7 @@ class MainWindow(QMainWindow):
             self._cast_panel.apply_method(index)    # no cast yet — free switch
         elif not self._cast_complete:
             QMessageBox.information(self, "Cast in Progress",
-                "Please Complete the Current Cast before Switching")
+                "Please complete the current cast before switching.")
         else:
             self._cast_panel.apply_method(index)    # completed reading — start a new one
             self._set_mode_new_reading()
@@ -1487,13 +1526,7 @@ def main():
     _ukai_id=QFontDatabase.addApplicationFont(resource("ukai_yijing.ttf"))
     if _ukai_id<0: print("Warning: AR PL UKai CN font could not be loaded")
     _aoyagi_id=QFontDatabase.addApplicationFont(resource("aoyagi_yijing.ttf"))
-    if _aoyagi_id<0:
-        print("Warning: Aoyagi heading font could not be loaded")
-    else:
-        _fams=QFontDatabase.applicationFontFamilies(_aoyagi_id)
-        global AOYAGI_FAMILY
-        if _fams: AOYAGI_FAMILY=_fams[0]
-        print(f"Aoyagi heading font family: {AOYAGI_FAMILY}")
+    if _aoyagi_id<0: print("Warning: Aoyagi heading font could not be loaded")
     palette=QPalette()
     palette.setColor(QPalette.Window,QColor("#f8f8f6"))
     palette.setColor(QPalette.WindowText,QColor("#1a1a1a"))

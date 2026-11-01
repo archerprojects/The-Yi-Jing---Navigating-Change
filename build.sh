@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ══════════════════════════════════════════════════════════════════════════════
 # The YiJing (I Ching) — Navigating Change — Flatpak Build Script
-# Script version 1.0.2 — Wednesday 28 October 2026
+# Script version 1.0.3 — Sunday 1 November 2026
 # Run from build directory:
 #   ./build.sh            build the .flatpak bundle only (default — repo-safe)
 #   ./build.sh --install  build, then install to the user Flatpak
@@ -123,9 +123,9 @@ appstreamcli compose --prefix=/ --origin="${APP_ID}" --components="${APP_ID}" \
 mkdir -p "$WORKDIR/export/share"
 cp -r "$SHARE/applications" "$SHARE/icons" "$SHARE/metainfo" "$WORKDIR/export/share/"
 
-cat > "$WORKDIR/metadata" << 'META'
+cat > "$WORKDIR/metadata" << META
 [Application]
-name=io.archerprojects.YiJingNavigatingChange
+name=${APP_ID}
 runtime=org.freedesktop.Platform/x86_64/25.08
 sdk=org.freedesktop.Sdk/x86_64/25.08
 command=YiJingNavigatingChange

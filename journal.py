@@ -1,6 +1,6 @@
 """
 The YiJing — Navigating Change
-journal.py — Version 1.0.2 — Wednesday 28 October 2026
+journal.py — Version 1.0.3 — Sunday 1 November 2026
 GNU GPL v3
 """
 
@@ -247,6 +247,9 @@ def auto_save_entry(hex_model, question, username, moment_data):
     return entry["id"]
 
 
+_METHOD_NAMES = {"coin": "Coin", "yarrow": "Yarrow Stalks", "manual": "Manual Cast Entry"}
+
+
 _SYNODIC        = 29.530588853                                    # mean synodic month, days
 _NEW_MOON_EPOCH = datetime(2000, 1, 6, 18, 14, tzinfo=timezone.utc)   # reference new moon
 _PHASES = ["🌑 New Moon", "🌒 Waxing Crescent", "🌓 First Quarter", "🌔 Waxing Gibbous",
@@ -264,103 +267,6 @@ def moon_phase(when=None):
         when = when.astimezone(timezone.utc)
     age = ((when - _NEW_MOON_EPOCH).total_seconds() / 86400) % _SYNODIC
     return _PHASES[int(((age + _SYNODIC / 16) % _SYNODIC) // (_SYNODIC / 8))]
-
-
-class AddNotesDialog(QWidget):
-    saved = Signal()
-
-    def __init__(self, entry_id, username="Default", parent=None):
-        super().__init__(parent, Qt.Window)
-        self.setWindowTitle("Add Notes to Reading")
-        self.setMinimumWidth(500)
-        self._entry_id = entry_id
-        self._username = username
-        self._build()
-
-    def _build(self):
-        try:
-            entries = load_journal(self._username)
-        except StoreError:
-            entries = []
-        entry   = next((e for e in entries if e.get("id") == self._entry_id), None)
-
-        vl = QVBoxLayout(self)
-        vl.setContentsMargins(20, 20, 20, 20)
-        vl.setSpacing(10)
-
-        title = QLabel("Add Notes to Reading")
-        title.setStyleSheet("font-size:15px; font-weight:bold; color:#515150;")
-        vl.addWidget(title)
-
-        if entry:
-            hid   = entry.get("hexagram", "")
-            hname = entry.get("hexagram_name", "")
-            char  = entry.get("hexagram_char", "")
-            info  = QLabel(f"<b>{char} {hid}. {hname}</b>  "
-                           f"<span style='color:#888;'>"
-                           f"{entry.get('date','')} {entry.get('time','')}</span>")
-            info.setStyleSheet("font-size:13px;")
-            vl.addWidget(info)
-
-        for attr, label, placeholder, height in [
-            ("_circ", "Notes",
-             "Brief context — what situation prompted this reading?", 80),
-            ("_refl", "Reflection",
-             "Initial thoughts on the reading", 100),
-        ]:
-            lbl = QLabel(label)
-            lbl.setStyleSheet("font-size:12px; font-weight:bold; color:#515150;")
-            vl.addWidget(lbl)
-            w = QTextEdit()
-            w.setPlaceholderText(placeholder)
-            w.setPlainText(entry.get(attr[1:], "") if entry else "")
-            w.setFixedHeight(height)
-            w.setStyleSheet(
-                "QTextEdit { border:1px solid #c0c0bc; border-radius:3px; "
-                "font-size:13px; padding:6px; background:#fff; color:#1a1a1a; }")
-            vl.addWidget(w)
-            setattr(self, attr, w)
-
-        tags_lbl = QLabel("Tags")
-        tags_lbl.setStyleSheet("font-size:12px; font-weight:bold; color:#515150;")
-        vl.addWidget(tags_lbl)
-        self._tags = QLineEdit()
-        self._tags.setPlaceholderText("comma separated: work, family, decision…")
-        self._tags.setText(", ".join(entry.get("tags", [])) if entry else "")
-        self._tags.setStyleSheet(
-            "QLineEdit { border:1px solid #c0c0bc; border-radius:3px; "
-            "font-size:13px; padding:5px 8px; background:#fff; color:#1a1a1a; }")
-        vl.addWidget(self._tags)
-
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
-        skip = QPushButton("Skip")
-        skip.clicked.connect(self.close)
-        save_btn = QPushButton("Save Notes")
-        save_btn.setStyleSheet(
-            "QPushButton { background:#515150; color:#fff; "
-            "border:none; padding:6px 18px; border-radius:3px; }"
-            "QPushButton:hover { background:#3a3a39; }")
-        save_btn.clicked.connect(self._save)
-        btn_row.addWidget(skip)
-        btn_row.addWidget(save_btn)
-        vl.addLayout(btn_row)
-
-    def _save(self):
-        try:
-            entries = load_journal(self._username)
-        except StoreError as err:
-            store_warning(self, err); return
-        for i, e in enumerate(entries):
-            if e.get("id") == self._entry_id:
-                entries[i]["circumstance"] = self._circ.toPlainText().strip()
-                entries[i]["reflection"]   = self._refl.toPlainText().strip()
-                entries[i]["tags"] = [
-                    t.strip() for t in self._tags.text().split(",") if t.strip()]
-                break
-        save_journal(entries, self._username)
-        self.saved.emit()
-        self.close()
 
 
 class EditEntryDialog(QWidget):
@@ -403,7 +309,7 @@ class EditEntryDialog(QWidget):
             setattr(self, attr, w)
 
         for attr, label, val, h in [
-            ("_circ", "Notes", self._entry.get("circumstance",""), 80),
+            ("_circ", "Circumstance", self._entry.get("circumstance",""), 80),
             ("_refl", "Reflection",   self._entry.get("reflection",""),   100),
         ]:
             lbl = QLabel(label); lbl.setStyleSheet(_LS); vl.addWidget(lbl)
@@ -653,11 +559,28 @@ class JournalView(QWidget):
         if hid:
             self._load_hex_in_panel(int(hid))
 
+    def _entry_by_id(self, entry_id):
+        return next((x for x in self._entries if x.get("id") == entry_id), None)
+
+    def _reselect(self, entry_id):
+        """Rebuild the list and show the saved entry again, with its new values."""
+        self.refresh()
+        e = self._entry_by_id(entry_id)
+        if e is None:
+            return
+        btn = self._entry_buttons.get(entry_id)
+        if btn is not None:
+            self._select_entry(e, btn)
+        else:                                   # hidden by the filter
+            self._current_entry = e; self._render_detail(e)
+
     def _open_edit(self, entry):
         from widgets import keep_window
+        entry_id = entry.get("id")
+        entry = self._entry_by_id(entry_id) or entry   # always edit the latest saved values
         dlg = EditEntryDialog(entry, self._username)
         keep_window(self, dlg)
-        dlg.saved.connect(self.refresh)
+        dlg.saved.connect(lambda i=entry_id: self._reselect(i))
         dlg.show(); dlg.raise_()
 
     def _delete_entry(self, entry):
@@ -750,11 +673,8 @@ class JournalView(QWidget):
 
         weather = e.get("weather","")
         if isinstance(weather, list): weather = ", ".join(weather)
-        r2("Date",           e.get("date",""))
-        r2("Time",           e.get("time",""))
         r2("Moon",           e.get("moon",""))
-        r2("Cast method",    e.get("cast_method","coin").capitalize())
-        r2("Purpose",        ", ".join(e.get("purpose",[])))
+        r2("Purpose",       ", ".join(e.get("purpose",[])))
         r2("Mood",           e.get("mood",""))
         r2("Weather",        weather)
         r2("Alias",          prof.get("alias",""))
@@ -774,14 +694,15 @@ class JournalView(QWidget):
         hname = e.get("hexagram_name","")
         char  = e.get("hexagram_char","")
         row("Hexagram", f"{char}  {hid}. {hname}" if hid else "—")
-        row("Method",   e.get("cast_method","coin").capitalize())
+        row("Method",   _METHOD_NAMES.get(e.get("cast_method", "coin"),
+                                          e.get("cast_method", "coin").capitalize()))
         moving = e.get("moving_lines",[])
         rid = rname = rchar = ""
         if moving:
             rid   = e.get("relating","")
             rname = e.get("relating_name","")
             rchar = e.get("relating_char","")
-            row("Moving lines", str(moving))
+            row("Moving lines", ", ".join(str(n) for n in moving))
             row("Relating",     f"{rchar}  {rid}. {rname}")
         # Hexagram figures (Primary, and Relating if there are moving lines)
         fig_row = QHBoxLayout(); fig_row.setSpacing(28)
@@ -844,7 +765,7 @@ class JournalView(QWidget):
         edit_btn.clicked.connect(lambda: self._open_edit(e))
         btn_row_detail.addWidget(edit_btn)
 
-        save_btn = QPushButton("Save Reflection & Tags")
+        save_btn = QPushButton("Save Reflection && Tags")
         save_btn.setStyleSheet(
             "QPushButton { background:#515150; color:#fff; border:none; "
             "padding:6px 16px; border-radius:3px; font-size:12px; }"
@@ -870,7 +791,8 @@ class JournalView(QWidget):
                     self._tags_edit.text().split(",") if t.strip()]
                 break
         save_journal(entries, self._username)
-        self._entries = entries
+        self._reselect(entry.get("id"))
+        self._list_status.setText(self._list_status.text() + "  ·  reflection and tags saved")
 
     def _load_hex_in_panel(self, hex_id):
         # browsing stays in the journal; only the "Read" menu action emits load_hex
@@ -974,6 +896,10 @@ def _blank_profile(username):
     }
 
 
+_COORD_HINT = ("Find at maps.google.com — right-click the place; "
+               "the first line of the menu is its latitude, longitude")
+
+
 class ProfileDialog(QDialog):
     _FIELD_STYLE = (
         "QLineEdit { background:#ffffff; color:#1a1a1a; "
@@ -1000,16 +926,6 @@ class ProfileDialog(QDialog):
         hdr.setStyleSheet("font-size:15px; font-weight:bold; color:#515150;")
         vl.addWidget(hdr)
 
-        if self._username == "Guest":
-            note = QLabel(
-                "Guest sessions are not saved. "
-                "Select a user on the opening screen to create a profile.")
-            note.setStyleSheet(self._HINT_STYLE); note.setWordWrap(True)
-            vl.addWidget(note)
-            close_btn = QPushButton("Close"); close_btn.clicked.connect(self.reject)
-            vl.addWidget(close_btn, alignment=Qt.AlignRight)
-            return
-
         from PySide6.QtWidgets import QFormLayout
         form = QFormLayout(); form.setSpacing(8)
         form.setLabelAlignment(Qt.AlignRight)
@@ -1031,12 +947,12 @@ class ProfileDialog(QDialog):
         birth_row, self._birth_lat, self._birth_lon = self._coord_row(
             self._profile.get("birth_lat",""), self._profile.get("birth_lon",""))
         form.addRow(self._lbl("Birth location"), birth_row)
-        form.addRow("", self._hint("Find at maps.google.com — right-click → What's here?"))
+        form.addRow("", self._hint(_COORD_HINT))
 
         curr_row, self._curr_lat, self._curr_lon = self._coord_row(
             self._profile.get("current_lat",""), self._profile.get("current_lon",""))
         form.addRow(self._lbl("Current location"), curr_row)
-        form.addRow("", self._hint("Find at maps.google.com — right-click → What's here?"))
+        form.addRow("", self._hint(_COORD_HINT))
 
         vl.addLayout(form)
 
@@ -1082,19 +998,42 @@ class ProfileDialog(QDialog):
         return row, lat, lon
 
     def _save(self):
-        def fe(text):
+        problems = []
+        def fe(text, label, limit):
             t = text.strip()
             if not t: return ""
-            try: return float(t)
-            except ValueError: return ""
+            try:
+                v = float(t)
+            except ValueError:
+                v = None
+            if v is None or not -limit <= v <= limit:
+                problems.append(f"{label}: \"{t}\" is not a number between -{limit} and {limit}.")
+            return v
+        def fmt(text, label, pattern, example):
+            t = text.strip()
+            if t:
+                try:
+                    datetime.strptime(t, pattern)
+                except ValueError:
+                    problems.append(f"{label}: \"{t}\" should look like {example}.")
+            return t
+
+        dob = fmt(self._dob.text(), "Date of birth", "%Y-%m-%d", "1970-03-21")
+        tob = fmt(self._tob.text(), "Time of birth", "%H:%M", "14:05")
+        coords = {
+            "birth_lat":   fe(self._birth_lat.text(), "Birth latitude",    90),
+            "birth_lon":   fe(self._birth_lon.text(), "Birth longitude",   180),
+            "current_lat": fe(self._curr_lat.text(),  "Current latitude",  90),
+            "current_lon": fe(self._curr_lon.text(),  "Current longitude", 180),
+        }
+        if problems:
+            # nothing is saved and every field keeps what was typed, ready to correct
+            QMessageBox.warning(self, "Check Profile",
+                "Please correct these before saving:\n\n" + "\n".join(problems))
+            return
 
         self._profile.update({
-            "alias": self._username, "dob": self._dob.text().strip(),
-            "tob": self._tob.text().strip(),
-            "birth_lat":   fe(self._birth_lat.text()),
-            "birth_lon":   fe(self._birth_lon.text()),
-            "current_lat": fe(self._curr_lat.text()),
-            "current_lon": fe(self._curr_lon.text()),
+            "alias": self._username, "dob": dob, "tob": tob, **coords,
             "notes": self._notes.toPlainText().strip(),
         })
         try:

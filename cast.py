@@ -5,7 +5,7 @@ cast.py — Casting panel, coin and yarrow widgets
 Imported lazily by yijing_main.py — never at module level.
 LineWidget imported directly by HexDisplay.
 
-Version 1.0.2 — Wednesday 28 October 2026
+Version 1.0.3 — Sunday 1 November 2026
 GNU GPL v3
 """
 
@@ -166,9 +166,8 @@ class _CoinCastPanel(QWidget):
     line_cast = Signal(int, int, list)
     cast_done = Signal()
 
-    def __init__(self, hex_model, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.hex               = hex_model
         self._pixmaps          = load_coin_pixmaps()
         self._lines            = []
         self._coin_vals        = []
@@ -385,7 +384,6 @@ def _get_yarrow_panel_class():
 class CastPanel(QWidget):
     line_cast   = Signal(int, int, list)
     cast_done   = Signal()
-    new_reading = Signal()
     method_requested = Signal(int)   # toggle clicked; MainWindow decides whether to gate
 
     _TOGGLE_ON = (
@@ -399,9 +397,8 @@ class CastPanel(QWidget):
         "QPushButton:hover{background:#dddddb;}"
     )
 
-    def __init__(self, hex_model, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.hex = hex_model
         self._manual = False   # current lines came from Manual Cast Entry
         self._build()
 
@@ -461,7 +458,7 @@ class CastPanel(QWidget):
         # ── Mode toggle ───────────────────────────────────────────────────────
         toggle_row = QHBoxLayout()
         self._coin_btn   = QPushButton("🪙  Coin")
-        self._yarrow_btn = QPushButton("𝌭  Yarrow")
+        self._yarrow_btn = QPushButton("𝌭  Yarrow Stalks")
         self._coin_btn.setStyleSheet(self._TOGGLE_ON)
         self._yarrow_btn.setStyleSheet(self._TOGGLE_OFF)
         self._coin_btn.clicked.connect(lambda: self.method_requested.emit(0))
@@ -473,9 +470,9 @@ class CastPanel(QWidget):
 
         # ── Stacked cast panels ───────────────────────────────────────────────
         self._stack = QStackedWidget()
-        self._coin_panel   = _CoinCastPanel(self.hex)
+        self._coin_panel   = _CoinCastPanel()
         YarrowPanel        = _get_yarrow_panel_class()
-        self._yarrow_panel = YarrowPanel(self.hex)
+        self._yarrow_panel = YarrowPanel()
 
         self._coin_panel.line_cast.connect(self.line_cast)
         self._coin_panel.cast_done.connect(self._on_cast_done)
@@ -504,13 +501,15 @@ class CastPanel(QWidget):
 
     def apply_method(self, index):
         self._manual = False
+        self._coin_panel.reset()        # a line begun on the other method is abandoned
+        self._yarrow_panel.reset()
         self._stack.setCurrentIndex(index)
         if index == 0:
             self._title_lbl.setText("Cast by Coin")
             self._coin_btn.setStyleSheet(self._TOGGLE_ON)
             self._yarrow_btn.setStyleSheet(self._TOGGLE_OFF)
         else:
-            self._title_lbl.setText("Yarrow Stalk Ritual")
+            self._title_lbl.setText("Cast by Yarrow Stalks")
             self._coin_btn.setStyleSheet(self._TOGGLE_OFF)
             self._yarrow_btn.setStyleSheet(self._TOGGLE_ON)
 

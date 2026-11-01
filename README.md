@@ -4,7 +4,7 @@ A desktop oracle for consulting the YiJing (I Ching) — 易經, "The Book of Ch
 Cast a hexagram by coin or yarrow stalk, read it across three classic translations,
 and keep a private reading journal — all in one offline Linux application.
 
-**Version:** 1.0.2 — Wednesday 28 October 2026
+**Version:** 1.0.3 — Sunday 1 November 2026
 **Flatpak ID:** `io.archerprojects.YiJingNavigatingChange`
 **Platform:** Linux (Flatpak) · X11 · x86_64
 **Developer:** archerprojects — <archer.projects@proton.me> · GitHub [@archerprojects](https://github.com/archerprojects)
@@ -26,8 +26,8 @@ network connection or any external service.
 
 ## Features
 
-- **Two casting methods.** Coin toss (every line type equally likely) and the older
-  yarrow-stalk method, which weights the lines unequally (Old Yin is rare — 1 in 16).
+- **Two casting methods.** Coin toss (the four line types fall 1, 3, 3 and 1 times in 8)
+  and the older yarrow-stalk method, which weights them differently (Old Yin is rare — 1 in 16).
   The yarrow cast is animated stalk by stalk.
 - **Manual cast entry.** Cast off-screen with real coins or stalks, then enter the
   six lines by hand — the reading flows through the same question form, readers,
