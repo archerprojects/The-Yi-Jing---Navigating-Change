@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 wheel.py — The Hexagram Wheel (Study screen).
-Version 1.0.3 — Sunday 1 November 2026
+Version 1.1.0 — Monday 2 November 2026
 
 A circular compass of all 64 hexagrams (King Wen order): number ring and
 six-line figure per wedge, 易經 hub, fixed pointer at 12 o'clock.

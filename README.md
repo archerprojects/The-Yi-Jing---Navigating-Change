@@ -4,7 +4,7 @@ A desktop oracle for consulting the YiJing (I Ching) — 易經, "The Book of Ch
 Cast a hexagram by coin or yarrow stalk, read it across three classic translations,
 and keep a private reading journal — all in one offline Linux application.
 
-**Version:** 1.0.3 — Sunday 1 November 2026
+**Version:** 1.1.0 — Monday 2 November 2026
 **Flatpak ID:** `io.archerprojects.YiJingNavigatingChange`
 **Platform:** Linux (Flatpak) · X11 · x86_64
 **Developer:** archerprojects — <archer.projects@proton.me> · GitHub [@archerprojects](https://github.com/archerprojects)
@@ -38,6 +38,11 @@ network connection or any external service.
   per reading, with a full book reader panel.
 - **Primary and relating hexagrams.** Moving lines and the resulting hexagram are
   shown side by side, with upper/lower trigram detail.
+- **Weighting (optional, experimental).** Off by default. When on, the moment shifts the
+  odds of the four line types within fixed limits: the yin-yang cycle of time of day, season
+  and moon sets the direction, and the asker's state (mood, sleep, light, body clock and other
+  research-weighted inputs) sets the amount of change. Every weight sits in a lockable
+  Factor Weighting table, and each journal entry records what was used.
 - **Reading journal.** Per-profile entries capturing the question, purpose, mood,
   weather, moon phase, and the cast result.
 - **Trigram lookup and study.** Browse all 64 hexagrams and the eight trigrams.
@@ -129,14 +134,14 @@ Sanitizer (`python -m ots aoyagi_yijing.ttf`); QtWebEngine rejects a font that f
 
 ### Prerequisites
 
-- **Python 3.12**
-- **PySide6** (Qt 6, including QtWebEngine)
-- **PyInstaller 6.20** or newer
+- **Python 3.15**
+- **PySide6 6.12** (Qt 6, including QtWebEngine)
+- **PyInstaller 6.22** or newer
 - **flatpak** and **flatpak-builder**
-- The **freedesktop runtime and SDK 25.08**:
+- The **freedesktop runtime and SDK 26.08**:
 
   ```sh
-  flatpak install flathub org.freedesktop.Platform//25.08 org.freedesktop.Sdk//25.08
+  flatpak install flathub org.freedesktop.Platform//26.08 org.freedesktop.Sdk//26.08
   ```
 
 ### Build

@@ -5,7 +5,7 @@ widgets.py — Shared widget classes
 Imported by both yijing_main.py and journal.py.
 No circular dependencies.
 
-Version 1.0.3 — Sunday 1 November 2026
+Version 1.1.0 — Monday 2 November 2026
 GNU GPL v3
 """
 

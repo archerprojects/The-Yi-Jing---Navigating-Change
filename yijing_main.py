@@ -1,6 +1,6 @@
 """
 The YiJing (I Ching) — Navigating Change
-Version 1.0.3 — Sunday 1 November 2026
+Version 1.1.0 — Monday 2 November 2026
 
 Python/PySide6 port of iching-0.2 by Jean Pierre Charalambos (2002).
 Coin casting engine from pyChing by Stephen M. Gava (1999-2006).
@@ -10,7 +10,7 @@ Port and redesign: rjv, 2026 — GNU GPL v3
 
 # ── Application Identity ──────────────────────────────────────────────────────
 APP_NAME    = "The YiJing (I Ching) — Navigating Change"
-APP_VER     = "1.0.3"
+APP_VER     = "1.1.0"
 APP_DEV     = "archerprojects"
 APP_CONTACT = "archer.projects@proton.me"
 APP_ID      = "io.archerprojects.YiJingNavigatingChange"
@@ -145,7 +145,7 @@ class HexModel(QObject):
         return HEX_TABLE.get((rel.sup_id(),rel.inf_id()),1)
 
 from widgets import ZoomView, keep_window
-from journal import load_users, add_user, StoreError, store_warning
+from journal import load_users, add_user, StoreError, store_warning, load_profile, save_profile
 
 # ══════════════════════════════════════════════════════════════════════════════
 # HEX DISPLAY — two column: primary | → | relating
@@ -548,16 +548,16 @@ class OpeningUserPanel(QWidget):
         self._build()
 
     def _build(self):
-        vl=QVBoxLayout(self); vl.setContentsMargins(16,24,16,16); vl.setSpacing(14)
-        vl.addStretch()
-        instr=QLabel("Please select a Profile and answer\nthe Questions to Unlock and\nProceed to the Oracle")
-        instr.setStyleSheet("font-size:12px;color:#c0b080;background:transparent;")
-        instr.setAlignment(Qt.AlignCenter); instr.setWordWrap(True)
-        vl.addWidget(instr)
+        """Each item is placed by realign() level with a row of the questions form."""
+        self.setMinimumWidth(250)
+        self._items=[]; self._targets={}
+        def item(w):
+            w.setParent(self); w.setStyleSheet(w.styleSheet() or "background:transparent;")
+            self._items.append(w); return w
         lbl=QLabel("Who is consulting?")
         lbl.setStyleSheet("font-size:15px;color:#ffffff;background:transparent;")
-        lbl.setAlignment(Qt.AlignCenter); vl.addWidget(lbl)
-        row=QHBoxLayout(); row.setSpacing(6)
+        lbl.setAlignment(Qt.AlignCenter); self._who=item(lbl)
+        pick=QWidget(); row=QHBoxLayout(pick); row.setContentsMargins(0,0,0,0); row.setSpacing(6)
         self._prev_btn=QPushButton("◀"); self._prev_btn.setFixedWidth(34)
         self._prev_btn.setStyleSheet(self._BTN_GHOST); self._prev_btn.clicked.connect(self._prev)
         row.addWidget(self._prev_btn)
@@ -565,20 +565,49 @@ class OpeningUserPanel(QWidget):
         self._name_btn.clicked.connect(self._next); row.addWidget(self._name_btn,1)
         self._next_btn=QPushButton("▶"); self._next_btn.setFixedWidth(34)
         self._next_btn.setStyleSheet(self._BTN_GHOST); self._next_btn.clicked.connect(self._next)
-        row.addWidget(self._next_btn); vl.addLayout(row)
+        row.addWidget(self._next_btn); self._pick=item(pick)
+        nw=QWidget(); nl=QHBoxLayout(nw); nl.setContentsMargins(0,0,0,0)
         new_btn=QPushButton("+ New User"); new_btn.setStyleSheet(self._BTN_GHOST)
-        new_btn.clicked.connect(self._on_new_user); vl.addWidget(new_btn,0,Qt.AlignCenter)
+        new_btn.clicked.connect(self._on_new_user)
+        nl.addStretch(); nl.addWidget(new_btn); nl.addStretch(); self._new=item(nw)
+        hw=QWidget(); hl=QVBoxLayout(hw); hl.setContentsMargins(0,0,0,0); hl.setSpacing(0)
         self._guest_lbl=QLabel("Guest session — readings will not be saved.")
         self._guest_lbl.setStyleSheet("font-size:11px;color:#c0b080;background:transparent;")
         self._guest_lbl.setAlignment(Qt.AlignCenter); self._guest_lbl.setWordWrap(True)
-        self._guest_lbl.setVisible(False); vl.addWidget(self._guest_lbl)
-        pmsg=QLabel("Edit your profile with details that improve "
+        self._guest_lbl.setVisible(False); hl.addWidget(self._guest_lbl)
+        self._pmsg=QLabel("Edit your profile with details that improve "
             "the accuracy of your readings: Journal → Profile")
-        pmsg.setStyleSheet("font-size:11px;color:#c0b080;background:transparent;")
-        pmsg.setAlignment(Qt.AlignCenter); pmsg.setWordWrap(True)
-        vl.addWidget(pmsg)
-        vl.addStretch()
+        self._pmsg.setStyleSheet("font-size:11px;color:#c0b080;background:transparent;")
+        self._pmsg.setAlignment(Qt.AlignCenter); self._pmsg.setWordWrap(True)
+        hl.addWidget(self._pmsg); self._hint=item(hw)
         self._users=load_users()
+
+    def add_bottom(self,w):
+        """Add a widget below the others (placed by realign())."""
+        w.setParent(self); self._items.append(w); self.realign()
+
+    def align_to(self,pairs):
+        """pairs: (own item, form widget) — each item is centred on its form row."""
+        self._targets=dict(pairs); self.realign()
+
+    def realign(self):
+        from PySide6.QtCore import QPoint
+        x=16; wdt=max(10,self.width()-32); y=26
+        here=self.mapTo(self.window(),QPoint(0,0)).y()
+        for w in sorted(self._items,key=lambda i: i is self._hint):
+            h=w.heightForWidth(wdt) if w.hasHeightForWidth() else -1
+            if h<=0: h=w.sizeHint().height()
+            t=self._targets.get(w)
+            top=y
+            if t is not None and t.isVisible():
+                top=t.mapTo(self.window(),QPoint(0,t.height()//2)).y()-here-h//2
+            w.setGeometry(x,top,wdt,h); w.show(); y=top+h+10
+
+    def resizeEvent(self,e):
+        super().resizeEvent(e); self.realign()
+
+    def _show_guest(self,guest):
+        self._guest_lbl.setVisible(guest); self._pmsg.setVisible(not guest); self.realign()
 
     def _unsel(self):
         return ("QPushButton{background:rgba(255,255,255,0.06);color:#a09060;"
@@ -611,11 +640,11 @@ class OpeningUserPanel(QWidget):
         slots=self._slots()
         if self._idx==-1:
             self._name_btn.setText("select user"); self._name_btn.setStyleSheet(self._unsel())
-            self._guest_lbl.setVisible(False); self.user_selected.emit(False)
+            self._show_guest(False); self.user_selected.emit(False)
         else:
             name=slots[self._idx]; self._name_btn.setText(name)
             self._name_btn.setStyleSheet(self._sel())
-            self._guest_lbl.setVisible(name=="Guest"); self.user_selected.emit(True)
+            self._show_guest(name=="Guest"); self.user_selected.emit(True)
 
     def _on_new_user(self):
         dlg=NewUserDialog(self)
@@ -643,7 +672,7 @@ class OpeningUserPanel(QWidget):
     def reset(self):
         self._idx=-1; self._users=load_users()
         self._name_btn.setText("select user"); self._name_btn.setStyleSheet(self._unsel())
-        self._guest_lbl.setVisible(False); self.user_selected.emit(False)
+        self._show_guest(False); self.user_selected.emit(False)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -652,6 +681,7 @@ class OpeningUserPanel(QWidget):
 # ══════════════════════════════════════════════════════════════════════════════
 class OpeningFormPanel(QWidget):
     proceed=Signal(str,str,dict)
+    weighting_guide=Signal()   # "Open the User Guide" from the (?) beside the Weighting switch
     PURPOSE_OPTIONS=["Personal","Relationship","Work","Health","Creative","Spiritual","Decision","Other"]
     MOOD_OPTIONS=["Calm","Restless","Tired","Energised","Unwell","Focused","Scattered"]
     WEATHER_OPTIONS=["☀️ Sunny","☁️ Cloudy","🌧️ Rainy","💨 Windy","❄️ Snowing",
@@ -680,11 +710,18 @@ class OpeningFormPanel(QWidget):
         self.setStyleSheet("background:transparent;")
         self._bg_pixmap=QPixmap(resource("opening_image.png"))
         self._show_bg=False
+        self._w_on=False; self._w_strength="Moderate"; self._w_profile={}; self._w_light=None
         self._build()
         user_panel.user_selected.connect(self.set_user_ready)
+        user_panel.user_selected.connect(self._w_user_changed)
 
     def set_show_bg(self,show):
         self._show_bg=show; self.update()
+
+    def set_own_header(self,show): self._instr.setVisible(show)
+
+    def resizeEvent(self,e):
+        super().resizeEvent(e); self._user_panel.realign()   # keep the left rows level with these
 
     def paintEvent(self,event):
         if self._show_bg and not self._bg_pixmap.isNull():
@@ -695,11 +732,12 @@ class OpeningFormPanel(QWidget):
         super().paintEvent(event)
 
     def _build(self):
-        vl=QVBoxLayout(self); vl.setContentsMargins(16,16,16,12); vl.setSpacing(8)
-        instr=QLabel("Please answer the Questions below to Unlock and Proceed to the Oracle")
-        instr.setStyleSheet("font-size:12px;color:#c0b080;background:transparent;")
-        instr.setAlignment(Qt.AlignCenter); instr.setWordWrap(True)
-        vl.addWidget(instr)
+        vl=QVBoxLayout(self); vl.setContentsMargins(16,8,16,6); vl.setSpacing(5)
+        self._instr=QLabel("Please answer the Questions below to Unlock and Proceed to the Oracle")
+        self._instr.setStyleSheet("font-size:12px;color:#c0b080;background:transparent;")
+        self._instr.setAlignment(Qt.AlignCenter); self._instr.setWordWrap(True)
+        self._instr.setVisible(False)          # the opening screen has the full-width header
+        vl.addWidget(self._instr)
         self._question=QLineEdit()
         self._question.setPlaceholderText("What question do you bring to the oracle?")
         self._question.setStyleSheet("QLineEdit{background:rgba(255,255,255,0.12);color:#ffffff;"
@@ -707,6 +745,7 @@ class OpeningFormPanel(QWidget):
             "border-radius:4px;padding:7px 10px;}")
         self._question.textChanged.connect(self._check_proc_enabled)
         vl.addWidget(self._question)
+        self._build_weighting(); self._section_lbls={}
         for section,opts,attr in [
             ("Purpose  (pick any)",self.PURPOSE_OPTIONS,"_purpose_btns"),
             ("Mood  (pick one)",   self.MOOD_OPTIONS,   "_mood_btns"),
@@ -714,19 +753,29 @@ class OpeningFormPanel(QWidget):
         ]:
             lbl=QLabel(section)
             lbl.setStyleSheet("font-size:12px;color:#c0b080;background:transparent;")
-            vl.addWidget(lbl)
+            vl.addWidget(lbl); self._section_lbls[attr]=lbl
             r=QHBoxLayout(); r.setSpacing(5); d={}
             for opt in opts:
                 btn=QPushButton(opt); btn.setCheckable(True); btn.setStyleSheet(self._BTN_OFF)
                 btn.clicked.connect(lambda checked,o=opt,a=attr: self._toggle(o,a))
                 r.addWidget(btn); d[opt]=btn
             r.addStretch(); vl.addLayout(r); setattr(self,attr,d)
-        vl.addSpacing(14)   # small gap below weather row; button sits up near questions
-        pr=QHBoxLayout(); pr.addStretch()
+            if attr=="_purpose_btns":
+                vl.addWidget(self._w_box)            # the weighting entries sit under Purpose
+        pr=QHBoxLayout(); info=QVBoxLayout(); info.setSpacing(0)
+        info.addWidget(self._w_now); info.addWidget(self._w_hint)
+        pr.addLayout(info,1); pr.addSpacing(10)
         self._proc_btn=QPushButton("Proceed to the Oracle  ▶")
         self._proc_btn.setStyleSheet(self._PROC_OFF); self._proc_btn.setEnabled(False)
         self._proc_btn.clicked.connect(self._on_proceed); pr.addWidget(self._proc_btn)
         vl.addLayout(pr)
+        self._w_user_changed(); self.set_weighting_on(False)   # once Proceed exists
+        up=self._user_panel
+        up.align_to([(up._who,self._question),(up._pick,self._purpose_btns["Personal"]),
+                     (up._new,self._w_box),
+                     (self._w_switch_w,self._mood_btns["Calm"]),
+                     (self._w_strength_w,self._weather_btns[self.WEATHER_OPTIONS[0]]),
+                     (up._hint,self._proc_btn)])
 
     def set_user_ready(self,ready):
         self._user_ready=ready; self._check_proc_enabled()
@@ -736,7 +785,8 @@ class OpeningFormPanel(QWidget):
         has_purpose=bool(self._purpose_sel)
         has_mood=self._mood_sel is not None
         has_weather=bool(self._weather_sel)
-        enabled=self._user_ready and has_question and has_purpose and has_mood and has_weather
+        enabled=(self._user_ready and has_question and has_purpose and has_mood and has_weather
+                 and self._weighting_ready())
         self._proc_btn.setEnabled(enabled)
         self._proc_btn.setStyleSheet(self._PROC_ON if enabled else self._PROC_OFF)
 
@@ -766,7 +816,202 @@ class OpeningFormPanel(QWidget):
         for d in [self._purpose_btns,self._mood_btns,self._weather_btns]:
             for b in d.values(): b.setChecked(False); b.setStyleSheet(self._BTN_OFF)
         self._purpose_sel.clear(); self._mood_sel=None; self._weather_sel.clear()
+        self._w_slept.setValue(0); self._w_woke.clear()
+        self.set_weighting_on(False)          # weighting starts Off for every reading
         self._set_proc_enabled(False)
+
+    # ── Weighting ────────────────────────────────────────────────────────────
+    _W_LBL="font-size:12px;color:#c0b080;background:transparent;"
+    _W_SMALL_OFF=("QPushButton{background:rgba(255,255,255,0.10);color:#e8d8a0;"
+                  "border:1px solid rgba(200,180,100,0.40);border-radius:3px;font-size:12px;padding:3px 8px;}"
+                  "QPushButton:hover{background:rgba(255,255,255,0.20);}"
+                  "QPushButton:disabled{color:rgba(232,216,160,0.30);border-color:rgba(200,180,100,0.15);}")
+    _W_SMALL_ON=("QPushButton{background:#8b6914;color:#f0e8d0;border:1px solid #a07820;"
+                 "border-radius:3px;font-size:12px;padding:3px 8px;font-weight:bold;}"
+                 "QPushButton:disabled{background:rgba(139,105,20,0.35);color:rgba(240,232,208,0.45);}")
+    _W_FIELD=("QLineEdit,QDoubleSpinBox,QSpinBox{background:rgba(255,255,255,0.12);color:#ffffff;"
+              "border:1px solid rgba(200,180,100,0.45);border-radius:3px;padding:2px 5px;font-size:12px;}"
+              "QLineEdit:disabled,QDoubleSpinBox:disabled,QSpinBox:disabled{color:rgba(255,255,255,0.30);"
+              "border-color:rgba(200,180,100,0.15);}")
+    _W_TEXT=("QLabel{font-size:11px;color:#c0b080;background:transparent;}"
+             "QLabel:disabled{color:rgba(192,176,128,0.40);}")
+
+    def _build_weighting(self):
+        """The Weighting switch and Strength go at the foot of the left panel; Slept,
+        Woke at, Light today and Cycle day sit under Purpose; Now beside Proceed."""
+        from PySide6.QtWidgets import QDoubleSpinBox, QSpinBox
+        from PySide6.QtCore import QTimer
+        from weighting import STRENGTHS
+        def text(t):
+            w=QLabel(t); w.setStyleSheet(self._W_TEXT); return w
+        # left panel: switch, (?), strength
+        self._w_switch_w=QWidget(); self._w_switch_w.setStyleSheet("background:transparent;")
+        row=QHBoxLayout(self._w_switch_w); row.setContentsMargins(0,0,0,0); row.setSpacing(5); row.addStretch()
+        lbl=QLabel("Weighting"); lbl.setStyleSheet(self._W_LBL); row.addWidget(lbl)
+        self._w_off_btn=QPushButton("Off"); self._w_on_btn=QPushButton("On")
+        for b,on in ((self._w_off_btn,False),(self._w_on_btn,True)):
+            b.clicked.connect(lambda _=False,o=on: self.set_weighting_on(o)); row.addWidget(b)
+        q=QPushButton("?"); q.setFixedSize(22,22); q.setToolTip("What weighting does")
+        q.setStyleSheet("QPushButton{background:transparent;color:#e8d8a0;border:1px solid "
+                        "rgba(200,180,100,0.60);border-radius:11px;font-size:12px;font-weight:bold;}"
+                        "QPushButton:hover{background:rgba(255,255,255,0.20);}")
+        q.clicked.connect(self._weighting_help); row.addWidget(q); row.addStretch()
+        self._w_strength_w=QWidget(); self._w_strength_w.setStyleSheet("background:transparent;")
+        r0=QHBoxLayout(self._w_strength_w); r0.setContentsMargins(0,0,0,0); r0.setSpacing(5); r0.addStretch()
+        self._w_strength_btns={}
+        for s_ in STRENGTHS:
+            b=QPushButton(s_); b.clicked.connect(lambda _=False,v=s_: self._w_set_strength(v))
+            r0.addWidget(b); self._w_strength_btns[s_]=b
+        r0.addStretch()
+        self._user_panel.add_bottom(self._w_switch_w); self._user_panel.add_bottom(self._w_strength_w)
+        # right panel, under Purpose: slept, woke at, light today, cycle day
+        self._w_box=QWidget(); self._w_box.setStyleSheet("background:transparent;")
+        r1=QHBoxLayout(self._w_box); r1.setContentsMargins(0,2,0,2); r1.setSpacing(5)
+        r1.addWidget(text("Slept"))
+        self._w_slept=QDoubleSpinBox(); self._w_slept.setRange(0,16); self._w_slept.setSingleStep(0.5)
+        self._w_slept.setDecimals(1); self._w_slept.setSpecialValueText("—"); self._w_slept.setSuffix(" h")
+        self._w_slept.setStyleSheet(self._W_FIELD); self._w_slept.setFixedWidth(72)
+        self._w_slept.valueChanged.connect(self._check_proc_enabled); r1.addWidget(self._w_slept)
+        r1.addSpacing(6); r1.addWidget(text("Woke at"))
+        self._w_woke=QLineEdit(); self._w_woke.setPlaceholderText("HH:MM"); self._w_woke.setFixedWidth(62)
+        self._w_woke.setStyleSheet(self._W_FIELD); self._w_woke.textChanged.connect(self._check_proc_enabled)
+        r1.addWidget(self._w_woke); r1.addSpacing(6)
+        self._w_light_btn=QPushButton("Light today…"); self._w_light_btn.setStyleSheet(self._W_SMALL_OFF)
+        self._w_light_btn.clicked.connect(self._w_edit_light); r1.addWidget(self._w_light_btn)
+        self._w_light_lbl=text("")
+        self._w_cycle=QWidget(); cl=QHBoxLayout(self._w_cycle); cl.setContentsMargins(10,0,0,0); cl.setSpacing(4)
+        cl.addWidget(text("Cycle day"))
+        self._w_cycle_day=QSpinBox(); self._w_cycle_day.setRange(1,60); self._w_cycle_day.setStyleSheet(self._W_FIELD)
+        cl.addWidget(self._w_cycle_day); cl.addWidget(text("of"))
+        self._w_cycle_len=QSpinBox(); self._w_cycle_len.setRange(20,45); self._w_cycle_len.setValue(28)
+        self._w_cycle_len.setStyleSheet(self._W_FIELD); cl.addWidget(self._w_cycle_len)
+        st=QPushButton("Started today"); st.setStyleSheet(self._W_SMALL_OFF); st.clicked.connect(self._w_cycle_started)
+        cl.addWidget(st); r1.addWidget(self._w_cycle); r1.addStretch()
+        # beside Proceed
+        self._w_now=text("")
+        self._w_hint=QLabel(""); self._w_hint.setWordWrap(True)
+        self._w_hint.setStyleSheet("font-size:11px;color:#f0a060;background:transparent;")
+        self._w_timer=QTimer(self); self._w_timer.timeout.connect(self._w_refresh_now); self._w_timer.start(60000)
+        self._w_set_strength("Moderate")
+
+    def set_weighting_on(self,on):
+        self._w_on=bool(on)
+        self._w_on_btn.setStyleSheet(self._W_SMALL_ON if on else self._W_SMALL_OFF)
+        self._w_off_btn.setStyleSheet(self._W_SMALL_OFF if on else self._W_SMALL_ON)
+        if on: self._w_user_changed()        # pick up any profile edits
+        for w in (self._w_box,self._w_strength_w,self._w_now): w.setEnabled(self._w_on)
+        self._w_refresh_now(); self._check_proc_enabled()
+
+    def _w_set_strength(self,s):
+        self._w_strength=s
+        for k,b in self._w_strength_btns.items():
+            b.setStyleSheet(self._W_SMALL_ON if k==s else self._W_SMALL_OFF)
+
+    def _w_registered(self):
+        u=self._user_panel.current_user()
+        return u if u and u!="Guest" else None
+
+    def _w_user_changed(self,_ready=None):
+        from weighting import light_from_habits
+        u=self._w_registered()
+        self._w_profile=load_profile(u) if u else {}
+        self._w_light=light_from_habits(self._w_profile)
+        p=self._w_profile
+        tracking=p.get("sex")=="female" and p.get("cycle_tracking")
+        self._w_cycle.setVisible(bool(tracking))
+        if tracking:
+            from datetime import date, datetime as _dt
+            ln=int(p.get("cycle_length") or 28); self._w_cycle_len.setValue(ln)
+            try:
+                d=(date.today()-_dt.strptime(p.get("cycle_start",""),"%Y-%m-%d").date()).days
+                self._w_cycle_day.setValue(d % ln + 1)
+            except ValueError:
+                self._w_cycle_day.setValue(1)
+        self._w_hint.setText("Set your sex in Journal → Profile to use weighting."
+                             if u and not p.get("sex") else "")
+        self._w_update_light_label(); self._w_refresh_now(); self._check_proc_enabled()
+
+    def _w_update_light_label(self):
+        lt=self._w_light or {}
+        def fmt(m):
+            return "—" if not m else f"{m//60} h {m%60:02d} min" if m>=60 else f"{m} min"
+        parts=[f"daylight {fmt(sum(lt.get('daylight',[])))}", f"screens {fmt(sum(lt.get('screen',[])))}",
+               f"red {fmt(sum(lt.get('red',[])))}"]
+        self._w_light_lbl.setText(" · ".join(parts))
+        self._w_light_btn.setToolTip("Light today: "+" · ".join(parts))
+
+    def _w_edit_light(self):
+        from PySide6.QtWidgets import QDialog, QGridLayout, QSpinBox, QDialogButtonBox
+        from weighting import LIGHT_TYPES, LIGHT_PERIODS, light_from_habits
+        dlg=QDialog(self); dlg.setWindowTitle("Light today")
+        v=QVBoxLayout(dlg)
+        v.addWidget(QLabel("About how many minutes of each kind of light today?\n"
+                           "Periods follow your own day from the time you woke."))
+        g=QGridLayout(); spins={}
+        for c,per in enumerate(LIGHT_PERIODS): g.addWidget(QLabel(per),0,c+1,Qt.AlignCenter)
+        for r,(key,label) in enumerate(LIGHT_TYPES):
+            g.addWidget(QLabel(label),r+1,0); spins[key]=[]
+            for c in range(len(LIGHT_PERIODS)):
+                s=QSpinBox(); s.setRange(0,720); s.setSingleStep(5); s.setFixedWidth(64)
+                s.setValue(int((self._w_light or {}).get(key,[0]*5)[c])); g.addWidget(s,r+1,c+1)
+                spins[key].append(s)
+        v.addLayout(g)
+        bb=QDialogButtonBox(QDialogButtonBox.Ok|QDialogButtonBox.Cancel)
+        reset=bb.addButton("From my habits",QDialogButtonBox.ResetRole)
+        def from_habits():
+            h=light_from_habits(self._w_profile)
+            for key,row in spins.items():
+                for c,s in enumerate(row): s.setValue(h[key][c])
+        reset.clicked.connect(from_habits)
+        bb.accepted.connect(dlg.accept); bb.rejected.connect(dlg.reject); v.addWidget(bb)
+        if dlg.exec()==QDialog.Accepted:
+            self._w_light={k:[s.value() for s in row] for k,row in spins.items()}
+            self._w_update_light_label()
+
+    def _w_cycle_started(self):
+        from datetime import date
+        self._w_cycle_day.setValue(1)
+        u=self._w_registered()
+        if u:
+            try:
+                p=load_profile(u,strict=True); p["cycle_start"]=date.today().isoformat()
+                save_profile(u,p); self._w_profile=p
+            except StoreError as err:
+                store_warning(self,err)
+
+    def _w_refresh_now(self):
+        import weighting
+        from journal import moon_phase
+        lat=self._w_profile.get("current_lat")
+        r=weighting.compute({"profile":{"current_lat":lat}},weighting.WEIGHT_DEFAULTS)
+        self._w_now.setText("Now: "+weighting.now_text(r["now"],moon_phase().partition(" ")[2]))
+
+    def _weighting_ready(self):
+        if not self._w_on: return True
+        if self._w_registered() and not self._w_profile.get("sex"): return False
+        return (self._w_slept.value()>0
+                and bool(re.fullmatch(r"([01]?\d|2[0-3]):[0-5]\d",self._w_woke.text().strip())))
+
+    def _weighting_help(self):
+        box=QMessageBox(QMessageBox.Information,"Weighting",
+            "Weighting goes a step further in personalising the reading. It factors in the "
+            "time of day, the season, the phase of the moon, your light, your sleep and your "
+            "own daily and monthly rhythms, to give a more precise reflection of your state of "
+            "mind and body at the time of the reading. New and experimental.",parent=self)
+        guide=box.addButton("Open the User Guide",QMessageBox.ActionRole)
+        box.addButton(QMessageBox.Close); box.exec()
+        if box.clickedButton() is guide: self.weighting_guide.emit()
+
+    def weighting_inputs(self):
+        """This reading's weighting entries, or None when weighting is off."""
+        if not self._w_on: return None
+        p=self._w_profile
+        tracking=p.get("sex")=="female" and p.get("cycle_tracking")
+        return {"strength":self._w_strength,"slept":self._w_slept.value(),
+                "woke":self._w_woke.text().strip(),"light":self._w_light,
+                "cycle_day":self._w_cycle_day.value() if tracking else None,
+                "cycle_length":self._w_cycle_len.value() if tracking else None,
+                "profile":p}
 
     def set_proceed_label(self,label): self._proc_btn.setText(label)
 
@@ -776,7 +1021,8 @@ class OpeningFormPanel(QWidget):
         question=self._question.text().strip()
         if not question: return
         moment={"question":question,"purpose":sorted(self._purpose_sel),
-                "mood":self._mood_sel or "","weather":sorted(self._weather_sel)}
+                "mood":self._mood_sel or "","weather":sorted(self._weather_sel),
+                "weighting_inputs":self.weighting_inputs()}
         self.proceed.emit(username,question,moment)
 
 
@@ -835,6 +1081,10 @@ class MainWindow(QMainWindow):
 
         # Index 0: opening / casting
         oc=QWidget(); oc_vl=QVBoxLayout(oc); oc_vl.setContentsMargins(4,4,4,4); oc_vl.setSpacing(4)
+        self._header=QLabel("Please select a Profile and answer the Questions below to Unlock and Proceed to the Oracle")
+        self._header.setStyleSheet("font-size:14px;color:#c0b080;background:transparent;padding-top:4px;")
+        self._header.setAlignment(Qt.AlignCenter)
+        oc_vl.addWidget(self._header)
         self._top_split=QSplitter(Qt.Horizontal); self._top_split.setChildrenCollapsible(False)
 
         # Left stack: user panel (0) / cast panel (1)
@@ -845,6 +1095,7 @@ class MainWindow(QMainWindow):
         self._cast_panel.line_cast.connect(self._on_line_cast)
         self._cast_panel.cast_done.connect(self._on_cast_done)
         self._cast_panel.method_requested.connect(self._on_method_requested)
+        self._cast_panel.guide_requested.connect(self._show_weighting_guide)
         self._cast_panel.setMinimumWidth(280); self._left_stack.addWidget(self._cast_panel)
         self._left_stack.setCurrentIndex(0); self._top_split.addWidget(self._left_stack)
 
@@ -852,6 +1103,7 @@ class MainWindow(QMainWindow):
         self._right_stack=_CurrentPageStack()
         self._form_panel=OpeningFormPanel(self._user_panel)
         self._form_panel.proceed.connect(self._on_proceed)
+        self._form_panel.weighting_guide.connect(self._show_weighting_guide)
         self._form_container=QWidget(); self._form_container.setMinimumWidth(240)
         fc_vl=QVBoxLayout(self._form_container); fc_vl.setContentsMargins(0,0,0,0)
         fc_vl.addWidget(self._form_panel)
@@ -891,7 +1143,7 @@ class MainWindow(QMainWindow):
         self._v_split.addWidget(self._top_split); self._v_split.addWidget(self._tabs)
         self._v_split.setStretchFactor(0, 0)
         self._v_split.setStretchFactor(1, 1)
-        self._v_split.setSizes([320, 430])
+        self._v_split.setSizes([300, 450])
         oc_vl.addWidget(self._v_split,1); self._main_stack.addWidget(oc)
 
         # Index 1: full reader
@@ -908,6 +1160,7 @@ class MainWindow(QMainWindow):
         mb=self.menuBar()
         jm=mb.addMenu("&Journal")
         jm.addAction("&Profile…",                self._show_profile)
+        jm.addAction("Factor &Weighting…",        self._show_factor_weighting)
         jm.addAction("&View Journal",             self._view_journal)
         jm.addSeparator()
         jm.addAction("&New Reading",              self._new_reading,    "Ctrl+N")
@@ -947,6 +1200,7 @@ class MainWindow(QMainWindow):
         self._cast_panel.setEnabled(False)
         self._form_panel.reset()
         self._cast_panel.reset()
+        self._header.setVisible(False); self._form_panel.set_own_header(True)
         self._form_panel.set_user_ready(True)
         self._form_panel.set_show_bg(True)
         self._form_panel.set_proceed_label("Begin New Reading  ▶")
@@ -995,6 +1249,7 @@ class MainWindow(QMainWindow):
 
     def _set_mode_casting(self):
         self._mode=self.MODE_CASTING
+        self._header.setVisible(False); self._form_panel.set_own_header(False)
         self._main_stack.setCurrentIndex(0)
         self._left_stack.setCurrentIndex(1); self._right_stack.setCurrentIndex(1)
         self._size_hex_pane()
@@ -1050,6 +1305,7 @@ class MainWindow(QMainWindow):
         self._cast_started=False; self._cast_complete=False; self._last_entry_id=None
         self._current_user=username; self._question=question; self._moment_data=moment_data
         self._cast_panel.set_alias(username)   # alias lives in CastPanel header
+        self._apply_weighting(username,moment_data)
         self._cast_panel.refresh_moon()
         self._cast_panel.reset()
         self._cast_panel.setEnabled(True)
@@ -1070,14 +1326,54 @@ class MainWindow(QMainWindow):
                 "Welcome{}.  Cast a hexagram to begin.".format(
                     ", "+username if username!="Guest" else ""),5000)
 
-    def _load_content_html(self,content_file):
+    def _load_content_html(self,content_file,anchor=None):
         from PySide6.QtCore import QUrl
         path=resource(os.path.join("content",content_file))
         try:
             with open(path,encoding="utf-8") as f: html=f.read()
         except Exception as e: html=f"<p>Could not load {content_file}: {e}</p>"
         html=html.replace("%%APP_VER%%",APP_VER)
+        if anchor:
+            page=self._reader_browser.page()
+            def go(_ok,page=page):
+                page.loadFinished.disconnect(go)
+                page.runJavaScript(f"var e=document.getElementById('{anchor}');if(e)e.scrollIntoView();")
+            page.loadFinished.connect(go)
         self._set_mode_reader(html,QUrl.fromLocalFile(path))
+
+    def _show_weighting_guide(self): self._load_content_html("help.html",anchor="weighting")
+
+    def _show_factor_weighting(self):
+        from journal import FactorWeightingDialog
+        FactorWeightingDialog(self._user_panel.current_user() or self._current_user,self).exec()
+
+    def _apply_weighting(self,username,moment_data):
+        """Work out this reading's odds from its weighting entries (if on), hand them
+        and the moment to the cast panel, and keep the full record for the journal."""
+        import weighting
+        inputs=moment_data.pop("weighting_inputs",None)
+        context={k:moment_data.get(k) for k in ("question","purpose","mood","weather")}
+        if not inputs:
+            moment_data["weighting"]={"on":False}
+            self._cast_panel.set_weighting(None,"",context); return
+        prof=inputs["profile"]
+        table=weighting.table_for(prof.get("weights") if username!="Guest" else None)
+        inputs=dict(inputs,mood=moment_data.get("mood"),weather=moment_data.get("weather"))
+        r=weighting.compute(inputs,table)
+        age=weighting.age_from_dob(prof.get("dob"))
+        moment_data["weighting"]={
+            "on":True,"strength":inputs["strength"],
+            "table":table,"table_is_default":weighting.is_default(table),
+            "inputs":{"slept":inputs["slept"],"woke":inputs["woke"],"light":inputs["light"],
+                      "cycle_day":inputs["cycle_day"],"cycle_length":inputs["cycle_length"],
+                      "mood":inputs["mood"],"weather":inputs["weather"],
+                      "sex":prof.get("sex",""),"age_bracket":weighting.age_bracket(age) if age is not None else "",
+                      "sun_hours":prof.get("sun_hours",""),"evening_light":prof.get("evening_light",""),
+                      "sleep_regular":prof.get("sleep_regular",""),
+                      "location_set":r["now"]["location_set"]},
+            "factors":r["factors"],"direction":r["direction"],"state":r["state"],
+            "odds":r["odds"],"now":r["now"]}
+        self._cast_panel.set_weighting(r["odds"],inputs["strength"],context)
 
     def _show_practice(self):     self._load_content_html("practice.html")
     def _show_commentaries(self): self._load_content_html("commentaries.html")

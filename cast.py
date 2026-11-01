@@ -5,7 +5,7 @@ cast.py — Casting panel, coin and yarrow widgets
 Imported lazily by yijing_main.py — never at module level.
 LineWidget imported directly by HexDisplay.
 
-Version 1.0.3 — Sunday 1 November 2026
+Version 1.1.0 — Monday 2 November 2026
 GNU GPL v3
 """
 
@@ -175,6 +175,8 @@ class _CoinCastPanel(QWidget):
         self._anim_frame       = 0
         self._pending_result   = None
         self._cast_all_pending = []
+        self.odds    = None    # None: classical; else {6..9} from weighting.compute
+        self.context = None    # the moment folded into each line's seed
 
         self._timer = QTimer()
         self._timer.timeout.connect(self._anim_step)
@@ -294,9 +296,13 @@ class _CoinCastPanel(QWidget):
         self._anim_frame   = 0
         from PySide6.QtGui import QCursor
         pos  = QCursor.pos()
-        seed = cast_seed(int(time.time() * 1000), pos.x(), pos.y())
+        seed = cast_seed(int(time.time() * 1000), pos.x(), pos.y(), self.context)
         rng  = random.Random(seed)   # this line's own generator: the moment and cursor of the cast
-        self._coin_vals      = [rng.choice([2, 3]) for _ in range(3)]
+        if self.odds:                # weighted: the line from the weighted odds, faces to match
+            import weighting
+            self._coin_vals = weighting.coin_faces(rng, weighting.draw_line(rng, self.odds))
+        else:
+            self._coin_vals = [rng.choice([2, 3]) for _ in range(3)]
         self._pending_result = sum(self._coin_vals)
         self._timer.start(20)
 
@@ -385,6 +391,7 @@ class CastPanel(QWidget):
     line_cast   = Signal(int, int, list)
     cast_done   = Signal()
     method_requested = Signal(int)   # toggle clicked; MainWindow decides whether to gate
+    guide_requested  = Signal()      # the "Weighted" marker was clicked
 
     _TOGGLE_ON = (
         "QPushButton{background:#515150;color:#fff;border:none;"
@@ -428,6 +435,17 @@ class CastPanel(QWidget):
             "font-size:13px;font-weight:bold;color:#1a1a1a;background:transparent;")
         header_row.addWidget(self._title_lbl)
         header_row.addStretch()
+
+        self._weight_btn = QPushButton("")
+        self._weight_btn.setFlat(True)
+        self._weight_btn.setCursor(Qt.PointingHandCursor)
+        self._weight_btn.setToolTip("How the cast is weighted — User Guide")
+        self._weight_btn.setStyleSheet(
+            "QPushButton{color:#8b6914;font-size:11px;text-decoration:underline;"
+            "border:none;background:transparent;padding:0 4px;}")
+        self._weight_btn.clicked.connect(self.guide_requested)
+        self._weight_btn.setVisible(False)
+        header_row.addWidget(self._weight_btn)
 
         self._alias_lbl = QLabel("")
         self._alias_lbl.setStyleSheet(
@@ -492,6 +510,21 @@ class CastPanel(QWidget):
 
     def current_method(self):
         return self._stack.currentIndex()
+
+    def set_weighting(self, odds, strength, context):
+        """odds: {"yarrow": {6..9}, "coin": {6..9}}, or None for the classical cast.
+        context: the moment (question, purpose, mood, weather) folded into every seed."""
+        self._odds = odds
+        self._coin_panel.context = context
+        self._yarrow_panel.set_context(context)
+        self._weight_btn.setText(f"Weighted · {strength}" if odds else "")
+        self._weight_btn.setVisible(bool(odds))
+        self._route_odds()
+
+    def _route_odds(self):
+        odds = getattr(self, "_odds", None)
+        self._coin_panel.odds = odds["coin"] if odds else None
+        self._yarrow_panel.set_odds(odds["yarrow"] if odds else None)
 
     def cast_method(self):
         """How the current lines were cast: 'manual', 'coin' or 'yarrow'."""

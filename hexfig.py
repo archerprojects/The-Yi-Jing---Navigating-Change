@@ -2,7 +2,7 @@
 The YiJing — Navigating Change
 hexfig.py — SVG hexagram figure generator
 
-Version 1.0.3 — Sunday 1 November 2026
+Version 1.1.0 — Monday 2 November 2026
 GNU GPL v3
 """
 

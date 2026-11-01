@@ -6,7 +6,7 @@ Imported lazily by cast.py. Never imported at module level.
 Self-contained: owns all narration text, animation logic, and QPainter rendering.
 Emits line_cast(int, int, list) and cast_done() — identical signature to coin panel.
 
-Version 1.0.3 — Sunday 1 November 2026
+Version 1.1.0 — Monday 2 November 2026
 GNU GPL v3
 """
 
@@ -55,16 +55,23 @@ _C_STATUS    = QColor(0x33, 0x33, 0x33)
 # CAST LOGIC
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _division(rng, pool, first):
+def _division(rng, pool, first, want=None):
     """
     One division of the stalks: (count, total set aside, east, west, rem_east,
     rem_west, pool). The east heap's remainder after counting by fours (1-4) is
     equally likely, as in the traditional method; a heap size with that
     remainder is then chosen so the counts shown are real piles.
     Over three divisions this gives 6→1/16, 7→5/16, 8→7/16, 9→3/16.
+    With `want` (2 or 3, from a weighted line) the remainder is drawn from those
+    that give that count, so the piles stay real.
     """
     avail = 48 if first else max(2, pool - 1)
-    r     = rng.randint(1, 4)
+    if want is None:
+        r = rng.randint(1, 4)
+    elif first:
+        r = rng.choice([1, 2, 3]) if want == 3 else 4
+    else:
+        r = rng.choice([1, 2]) if want == 3 else rng.choice([3, 4])
     east  = rng.choice([n for n in range(1, avail) if (n % 4 or 4) == r])
     west  = avail - east
     re    = east % 4 or 4
@@ -73,11 +80,12 @@ def _division(rng, pool, first):
     return (3 if total == (5 if first else 4) else 2), total, east, west, re, rw, pool
 
 
-def _click_seed(event):
-    """Seed for one division: the moment and the position of the click."""
+def _click_seed(event, context=None):
+    """Seed for one division: the moment and the position of the click,
+    with the moment of the reading (question, purpose, mood, weather) folded in."""
     from cast import cast_seed      # cast.py has already loaded this module
     p = event.position()
-    return cast_seed(int(time.time() * 1000), p.x(), p.y())
+    return cast_seed(int(time.time() * 1000), p.x(), p.y(), context)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -269,6 +277,9 @@ class YarrowAnimWidget(QWidget):
         self._round_idx  = 0
         self._line_val   = 0
         self._step       = self._IDLE
+        self.odds        = None    # None: classical; else {6..9} from weighting.compute
+        self.context     = None
+        self._plan       = None    # weighted line: the three division counts to draw
 
         self._anim_timer  = QTimer(self)
         self._anim_timer.timeout.connect(self._anim_tick)
@@ -310,7 +321,7 @@ class YarrowAnimWidget(QWidget):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
-            self._on_click(_click_seed(event))
+            self._on_click(_click_seed(event, self.context))
 
     def mouseMoveEvent(self, event):
         in_hot = any(r.contains(event.pos()) for r in self._clickable_rects)
@@ -320,17 +331,22 @@ class YarrowAnimWidget(QWidget):
 
     def _on_click(self, seed=None):
         if self._step == self._IDLE:
-            self._begin_line()
+            self._begin_line(seed)
         elif self._step == self._DIVIDE:
             self._do_divide(seed)
         elif self._step == self._ROUND_DONE:
             self._next_round()
         elif self._step == self._LINE_DONE:
-            self._accept_line()
+            self._accept_line(seed)
 
     # ── Cast logic ───────────────────────────────────────────────────────────
 
-    def _begin_line(self):
+    def _begin_line(self, seed=None):
+        self._plan = None
+        if self.odds:                 # weighted: the line is drawn now, the divisions to fit it
+            import weighting
+            rng = random.Random(seed)
+            self._plan = weighting.yarrow_plan(rng, weighting.draw_line(rng, self.odds))
         self._counts        = []
         self._round_idx     = 0
         self._finger        = [0, 0, 0]
@@ -347,7 +363,8 @@ class YarrowAnimWidget(QWidget):
         # this division comes from the moment and place of the click that made it
         prev = self._round_data[-1] if self._round_data else None
         pool = 49 if prev is None else prev[6] - prev[1]
-        rd   = _division(random.Random(seed), pool, prev is None)
+        want = self._plan[len(self._round_data)] if self._plan else None
+        rd   = _division(random.Random(seed), pool, prev is None, want)
         self._round_data.append(rd)
         _, _, east, west, _, _, pool = rd
         self._main_count  = 0
@@ -407,7 +424,7 @@ class YarrowAnimWidget(QWidget):
         self._step        = self._DIVIDE
         self.update()
 
-    def _accept_line(self):
+    def _accept_line(self, seed=None):
         line_idx = len(self._lines)
         self._lines.append(self._line_val)
         self.line_cast.emit(line_idx, self._line_val, self._counts)
@@ -417,7 +434,7 @@ class YarrowAnimWidget(QWidget):
             self.update()
             self.cast_done.emit()
         else:
-            self._begin_line()          # the click that accepts a line starts the next
+            self._begin_line(seed)      # the click that accepts a line starts the next
 
     # ── Painting ─────────────────────────────────────────────────────────────
 
@@ -651,6 +668,12 @@ class YarrowPanel(QWidget):
 
     def get_lines(self):
         return self._anim.get_lines()
+
+    def set_odds(self, odds):
+        self._anim.odds = odds
+
+    def set_context(self, context):
+        self._anim.context = context
 
     def reset(self):
         self._anim.reset()

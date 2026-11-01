@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ══════════════════════════════════════════════════════════════════════════════
 # The YiJing (I Ching) — Navigating Change — Flatpak Build Script
-# Script version 1.0.3 — Sunday 1 November 2026
+# Script version 1.1.0 — Monday 2 November 2026
 # Run from build directory:
 #   ./build.sh            build the .flatpak bundle only (default — repo-safe)
 #   ./build.sh --install  build, then install to the user Flatpak
@@ -52,6 +52,7 @@ pyinstaller \
   --add-data "icon_64.png:." \
   --add-data "icon_128.png:." \
   --add-data "icon_256.png:." \
+  --hidden-import weighting \
   --hidden-import PySide6.QtPrintSupport \
   --hidden-import PySide6.QtWebEngineWidgets \
   --hidden-import PySide6.QtWebEngineCore \
@@ -126,8 +127,8 @@ cp -r "$SHARE/applications" "$SHARE/icons" "$SHARE/metainfo" "$WORKDIR/export/sh
 cat > "$WORKDIR/metadata" << META
 [Application]
 name=${APP_ID}
-runtime=org.freedesktop.Platform/x86_64/25.08
-sdk=org.freedesktop.Sdk/x86_64/25.08
+runtime=org.freedesktop.Platform/x86_64/26.08
+sdk=org.freedesktop.Sdk/x86_64/26.08
 command=YiJingNavigatingChange
 
 [Context]

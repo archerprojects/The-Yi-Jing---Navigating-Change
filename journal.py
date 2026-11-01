@@ -1,6 +1,6 @@
 """
 The YiJing — Navigating Change
-journal.py — Version 1.0.3 — Sunday 1 November 2026
+journal.py — Version 1.1.0 — Monday 2 November 2026
 GNU GPL v3
 """
 
@@ -239,6 +239,7 @@ def auto_save_entry(hex_model, question, username, moment_data):
         "reflection":    "",
         "tags":          [],
         "cast_method":   moment_data.get("cast_method", "coin"),
+        "weighting":     moment_data.get("weighting", {"on": False}),
     }
     _ensure_registered(username)
     entries = load_journal(username)
@@ -698,6 +699,23 @@ class JournalView(QWidget):
                                           e.get("cast_method", "coin").capitalize()))
         moving = e.get("moving_lines",[])
         rid = rname = rchar = ""
+        w = e.get("weighting") or {}
+        if w.get("on"):
+            row("Weighting", f"On · {w.get('strength','')}"
+                + ("" if w.get("table_is_default", True) else " · own table"))
+            key = "yarrow" if e.get("cast_method") == "yarrow" else "coin"
+            o = (w.get("odds") or {}).get(key) or {}
+            row("Odds", "  ·  ".join(
+                f"{k}: {100 * (o.get(str(k), o.get(k)) or 0):.1f}%" for k in (6, 7, 8, 9)))
+            i = w.get("inputs") or {}
+            light = i.get("light") or {}
+            def mins(t): return sum((light.get(t) or []))
+            row("Inputs", f"slept {i.get('slept','—')} h · woke {i.get('woke','—')} · "
+                f"daylight {mins('daylight')} min · screens {mins('screen')} min · "
+                f"red {mins('red')} min"
+                + (f" · cycle day {i['cycle_day']} of {i['cycle_length']}" if i.get("cycle_day") else ""))
+        elif w:
+            row("Weighting", "Off")
         if moving:
             rid   = e.get("relating","")
             rname = e.get("relating_name","")
@@ -893,6 +911,8 @@ def _blank_profile(username):
         "alias": username, "created": datetime.now().isoformat(),
         "dob": "", "tob": "", "birth_lat": "", "birth_lon": "",
         "current_lat": "", "current_lon": "", "notes": "",
+        "sex": "", "sun_hours": "", "evening_light": "", "sleep_regular": "",
+        "cycle_tracking": False, "cycle_start": "", "cycle_length": 28,
     }
 
 
@@ -953,6 +973,48 @@ class ProfileDialog(QDialog):
             self._profile.get("current_lat",""), self._profile.get("current_lon",""))
         form.addRow(self._lbl("Current location"), curr_row)
         form.addRow("", self._hint(_COORD_HINT))
+
+        from PySide6.QtWidgets import QComboBox, QCheckBox, QSpinBox
+        def combo(options, current):
+            c = QComboBox()
+            for label, value in options:
+                c.addItem(label, value)
+            i = c.findData(current); c.setCurrentIndex(i if i >= 0 else 0)
+            return c
+        form.addRow(self._lbl("Weighting"), self._hint(
+            "Used only when weighting is on. Never shared or sent anywhere."))
+        self._sex = combo([("—", ""), ("Male", "male"), ("Female", "female")],
+                          self._profile.get("sex", ""))
+        form.addRow(self._lbl("Sex"), self._sex)
+        self._sun = combo([("—", ""), ("Under 1 hour", "<1"), ("1–3 hours", "1-3"),
+                           ("3 hours or more", "3+")], self._profile.get("sun_hours", ""))
+        form.addRow(self._lbl("Daytime sun"), self._sun)
+        self._eve = combo([("—", ""), ("Bright (screens, cool lights)", "bright"),
+                           ("Moderate", "moderate"), ("Dark (dim, warm)", "dark")],
+                          self._profile.get("evening_light", ""))
+        form.addRow(self._lbl("Evening light"), self._eve)
+        self._reg = combo([("—", ""), ("Irregular", "irregular"), ("Somewhat regular", "somewhat"),
+                           ("Consistent", "consistent")], self._profile.get("sleep_regular", ""))
+        form.addRow(self._lbl("Sleep times"), self._reg)
+        self._track = QCheckBox("Track my menstrual cycle")
+        self._track.setChecked(bool(self._profile.get("cycle_tracking")))
+        form.addRow(self._lbl("Cycle"), self._track)
+        cyc = QHBoxLayout()
+        self._cyc_start = QLineEdit(self._profile.get("cycle_start", ""))
+        self._cyc_start.setPlaceholderText("last start YYYY-MM-DD")
+        self._cyc_start.setStyleSheet(self._FIELD_STYLE); self._cyc_start.setFixedWidth(170)
+        self._cyc_len = QSpinBox(); self._cyc_len.setRange(20, 45)
+        self._cyc_len.setValue(int(self._profile.get("cycle_length") or 28))
+        cyc.addWidget(self._cyc_start); cyc.addWidget(QLabel("  length")); cyc.addWidget(self._cyc_len)
+        cyc.addWidget(QLabel("days")); cyc.addStretch()
+        form.addRow("", cyc)
+        def cycle_enabled():
+            on = self._sex.currentData() == "female"
+            self._track.setEnabled(on)
+            on = on and self._track.isChecked()
+            self._cyc_start.setEnabled(on); self._cyc_len.setEnabled(on)
+        self._sex.currentIndexChanged.connect(cycle_enabled)
+        self._track.toggled.connect(cycle_enabled); cycle_enabled()
 
         vl.addLayout(form)
 
@@ -1019,6 +1081,9 @@ class ProfileDialog(QDialog):
             return t
 
         dob = fmt(self._dob.text(), "Date of birth", "%Y-%m-%d", "1970-03-21")
+        tracking = self._sex.currentData() == "female" and self._track.isChecked()
+        cyc_start = fmt(self._cyc_start.text(), "Cycle start", "%Y-%m-%d", "2026-10-20") \
+            if tracking else self._cyc_start.text().strip()
         tob = fmt(self._tob.text(), "Time of birth", "%H:%M", "14:05")
         coords = {
             "birth_lat":   fe(self._birth_lat.text(), "Birth latitude",    90),
@@ -1035,9 +1100,107 @@ class ProfileDialog(QDialog):
         self._profile.update({
             "alias": self._username, "dob": dob, "tob": tob, **coords,
             "notes": self._notes.toPlainText().strip(),
+            "sex": self._sex.currentData(), "sun_hours": self._sun.currentData(),
+            "evening_light": self._eve.currentData(), "sleep_regular": self._reg.currentData(),
+            "cycle_tracking": tracking, "cycle_start": cyc_start,
+            "cycle_length": self._cyc_len.value(),
         })
         try:
             save_profile(self._username, self._profile)
         except StoreError as err:
             store_warning(self, err); return
         self.accept()
+
+
+class FactorWeightingDialog(QDialog):
+    """Journal → Factor Weighting: the weighting table, locked until unlocked.
+    Values are kept per profile; Reset to Defaults restores the built-in table."""
+
+    def __init__(self, username, parent=None):
+        super().__init__(parent)
+        import weighting
+        self._w = weighting
+        self.setWindowTitle("Factor Weighting")
+        self.setMinimumWidth(720)
+        self._username = username if username and username != "Guest" else None
+        self._profile = load_profile(self._username) if self._username else {}
+        self._table = weighting.table_for(self._profile.get("weights"))
+        self._build()
+        self._set_locked(True)
+
+    def _build(self):
+        from PySide6.QtWidgets import QTableWidget, QTableWidgetItem, QDoubleSpinBox, QHeaderView
+        vl = QVBoxLayout(self)
+        top = QHBoxLayout()
+        who = (f"Weighting table for {self._username}." if self._username else
+               "Guest: the built-in table is used and cannot be changed.")
+        top.addWidget(QLabel(who)); top.addStretch()
+        self._lock = QPushButton(); self._lock.setCheckable(True)
+        self._lock.setEnabled(bool(self._username))
+        self._lock.toggled.connect(lambda unlocked: self._set_locked(not unlocked))
+        top.addWidget(self._lock)
+        vl.addLayout(top)
+        groups = {"direction": "Direction — the yin-yang cycle",
+                  "change": "Amount of change — your state",
+                  "limits": "Limits"}
+        rows = self._w.FACTORS
+        self._grid = QTableWidget(len(rows), 4)
+        self._grid.setHorizontalHeaderLabels(["Factor", "Group", "Evidence / meaning", "Value"])
+        self._grid.verticalHeader().setVisible(False)
+        self._spins = {}
+        for r, (key, label, group, evidence, _d, lo, hi, unit) in enumerate(rows):
+            for c, text in enumerate((label, groups[group], evidence)):
+                item = QTableWidgetItem(text)
+                item.setFlags(Qt.ItemIsEnabled)
+                self._grid.setItem(r, c, item)
+            s = QDoubleSpinBox(); s.setRange(lo, hi)
+            s.setDecimals(0 if unit == "%" else 2); s.setSingleStep(5 if unit == "%" else 0.05)
+            s.setSuffix(" %" if unit == "%" else ""); s.setValue(self._table[key])
+            self._grid.setCellWidget(r, 3, s); self._spins[key] = s
+        hh = self._grid.horizontalHeader()
+        hh.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        hh.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        hh.setSectionResizeMode(2, QHeaderView.Stretch)
+        hh.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self._grid.setMinimumHeight(460)
+        vl.addWidget(self._grid)
+        note = QLabel("These are first settings, to be refined with further research. Each "
+                      "journal entry records the values it was cast with.")
+        note.setWordWrap(True); note.setStyleSheet("font-size:11px;color:#888;")
+        vl.addWidget(note)
+        btns = QHBoxLayout()
+        self._reset = QPushButton("Reset to Defaults"); self._reset.clicked.connect(self._reset_defaults)
+        btns.addWidget(self._reset); btns.addStretch()
+        close = QPushButton("Close"); close.clicked.connect(self.reject)
+        self._save_btn = QPushButton("Save"); self._save_btn.clicked.connect(self._save)
+        btns.addWidget(close); btns.addWidget(self._save_btn)
+        vl.addLayout(btns)
+
+    def _set_locked(self, locked):
+        self._lock.blockSignals(True); self._lock.setChecked(not locked); self._lock.blockSignals(False)
+        self._lock.setText("🔒  Locked — click to unlock" if locked else "🔓  Unlocked — click to lock")
+        for s in self._spins.values():
+            s.setEnabled(not locked)
+        self._reset.setEnabled(not locked and bool(self._username))
+        self._save_btn.setEnabled(not locked and bool(self._username))
+
+    def _reset_defaults(self):
+        for key, s in self._spins.items():
+            s.setValue(self._w.WEIGHT_DEFAULTS[key])
+
+    def _save(self):
+        values = {k: s.value() for k, s in self._spins.items()}
+        try:
+            prof = load_profile(self._username, strict=True)
+        except StoreError as err:
+            store_warning(self, err); return
+        if self._w.is_default(values):
+            prof.pop("weights", None)          # back on the built-in table
+        else:
+            prof["weights"] = values
+        try:
+            save_profile(self._username, prof)
+        except StoreError as err:
+            store_warning(self, err); return
+        self._set_locked(True)
+
