@@ -4,7 +4,7 @@ A desktop oracle for consulting the YiJing (I Ching) — 易經, "The Book of Ch
 Cast a hexagram by coin or yarrow stalk, read it across three classic translations,
 and keep a private reading journal — all in one offline Linux application.
 
-**Version:** 1.1.0 — Monday 2 November 2026
+**Version:** 1.1.0 — Monday 2 November 2026 (README revised Tuesday 10 November 2026)
 **Flatpak ID:** `io.archerprojects.YiJingNavigatingChange`
 **Platform:** Linux (Flatpak) · X11 · x86_64
 **Developer:** archerprojects — <archer.projects@proton.me> · GitHub [@archerprojects](https://github.com/archerprojects)
@@ -65,6 +65,59 @@ network connection or any external service.
 changing to Hexagram 3 (屯 Zhūn, Difficulty):*
 
 ![Completed reading](screenshots/reading.jpg)
+
+---
+
+## Install
+
+**The YiJing `.flatpak` file is not self-contained.** It needs the freedesktop 26.08
+runtime from Flathub, installed first. Run these in a terminal, in this order, and
+always use `--user`, as shown. Don't install it with an app store or Flatpak manager.
+
+**1. Flatpak and Flathub (once per machine).** Linux Mint and Fedora already have
+Flatpak; on Ubuntu or Debian, first run `sudo apt install flatpak`. Then:
+
+```bash
+flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+```
+
+**2. The runtime (once per machine):**
+
+```bash
+flatpak install --user flathub org.freedesktop.Platform//26.08
+```
+
+**3. The YiJing.** Download the `.flatpak` file from the latest release:
+https://github.com/archerprojects/The-Yi-Jing---Navigating-Change/releases/latest
+
+then, in the folder you saved it to (use the file's own name, for example
+`YiJingNavigatingChange-1.1.0-x86_64.flatpak`):
+
+```bash
+flatpak install --user YiJingNavigatingChange-1.1.0-x86_64.flatpak
+```
+
+**4. Run.** Open **The YiJing (I Ching) — Navigating Change** from the Education menu, or:
+
+```bash
+flatpak run io.archerprojects.YiJingNavigatingChange
+```
+
+### Update
+
+Download the latest version again and repeat step 3. Your profiles and journal are kept.
+
+Use the command in step 3, not an app store or Flatpak manager. Those can install into
+the system installation, beside your existing copy, and the older copy keeps starting.
+
+### If The YiJing won't start
+
+Remove every copy, then repeat steps 2 and 3 (your data is kept):
+
+```bash
+flatpak uninstall --user io.archerprojects.YiJingNavigatingChange
+flatpak uninstall --system io.archerprojects.YiJingNavigatingChange
+```
 
 ---
 
