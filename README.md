@@ -70,30 +70,38 @@ changing to Hexagram 3 (屯 Zhūn, Difficulty):*
 
 ## Install
 
-The YiJing runs as a Flatpak. Install it with the two commands below, in a terminal.
-Both use `--user`, which puts it in your own home installation.
+The YiJing runs as a Flatpak. Two steps, each one command pasted into a terminal.
 
-**Don't install it with Software Manager or any other app store or Flatpak manager.**
-They install it system-wide, and an older copy in your home installation keeps
-starting instead.
+> [!IMPORTANT]
+> **Install with the commands below. Don't use Software Manager or any other app store
+> or Flatpak manager.** They install it system-wide, and an older copy in your home
+> installation keeps starting instead. The commands use `--user`, which puts The YiJing
+> in your own home installation.
 
 **1. The runtime (once per machine).** The YiJing needs the freedesktop 26.08 runtime
 from Flathub: about 283 MB to download, and Flatpak also fetches its graphics and
 language extensions. Linux Mint and Fedora already have Flatpak; on Ubuntu or Debian,
-first run `sudo apt install flatpak`. Then:
+first run `sudo apt install flatpak`. Open a terminal (**Ctrl+Alt+T**) and paste:
 
 ```bash
 flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo && flatpak install -y --user flathub org.freedesktop.Platform//26.08
 ```
 
-**2. The YiJing (to install, and to update).** This downloads the latest release and
-installs it:
+**2. The YiJing (to install, and to update).**
+
+> [!TIP]
+> Download the `.flatpak` file (for example `YiJingNavigatingChange-1.1.0-x86_64.flatpak`)
+> from the **Assets** list at the bottom of the latest release:
+> https://github.com/archerprojects/The-Yi-Jing---Navigating-Change/releases/latest
+>
+> Your browser saves it to your **Downloads** folder. Then open a terminal
+> (**Ctrl+Alt+T**) and paste the command below. It installs the newest YiJing file in
+> Downloads into your home installation; you don't need to change folder or type the
+> version.
 
 ```bash
-wget -O YiJingNavigatingChange-x86_64.flatpak https://github.com/archerprojects/The-Yi-Jing---Navigating-Change/releases/latest/download/YiJingNavigatingChange-x86_64.flatpak && flatpak install -y --user --reinstall YiJingNavigatingChange-x86_64.flatpak
+flatpak install -y --user --reinstall "$(ls -t ~/Downloads/YiJingNavigatingChange-*-x86_64.flatpak | head -1)"
 ```
-
-The download link on its own: https://github.com/archerprojects/The-Yi-Jing---Navigating-Change/releases/latest/download/YiJingNavigatingChange-x86_64.flatpak
 
 **3. Run.** Open **The YiJing (I Ching) — Navigating Change** from the Education menu, or:
 
@@ -103,16 +111,16 @@ flatpak run io.archerprojects.YiJingNavigatingChange
 
 ### Update
 
-Run step 2 again. It replaces the copy in your home installation with the latest
-release. Your profiles and journal are kept: they live in `~/.local/share/yijing/`,
-outside the app, and installing never touches them. If it says "This version … is
-already installed", you already have the latest release.
+Download the new `.flatpak` from the latest release and paste the step 2 command again.
+It replaces the copy in your home installation. Your profiles and journal are kept: they
+live in `~/.local/share/yijing/`, outside the app, and installing never touches them.
+If it says "This version … is already installed", you already have the latest release.
 
 ### If an older version keeps starting
 
 A copy installed system-wide (for example by Software Manager) never starts while a copy
-sits in your home installation. Run step 2 again: the copy it puts in your home
-installation is the one that starts. To see every copy:
+sits in your home installation. Download the latest release and paste the step 2 command:
+the copy it puts in your home installation is the one that starts. To see every copy:
 
 ```bash
 flatpak list --app --columns=application,version,installation | grep -i yijing
@@ -207,8 +215,7 @@ From the project directory:
 ```
 
 `build.sh` reads the version and Flatpak ID directly from `yijing_main.py`, runs
-PyInstaller, and packages the Flatpak (`YiJingNavigatingChange-x86_64.flatpak`, a fixed name
-so the release's latest-download link always works).
+PyInstaller, and packages the Flatpak (`YiJingNavigatingChange-<version>-x86_64.flatpak`).
 The About page reads the same value at runtime, so bumping `APP_VER` in
 `yijing_main.py` is the only change needed to version a release.
 

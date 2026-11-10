@@ -32,8 +32,7 @@ done
 VERSION=$(grep 'APP_VER' yijing_main.py | head -1 | grep -oP '"\K[^"]+')
 APP_ID=$(grep 'APP_ID' yijing_main.py | head -1 | grep -oP '"\K[^"]+')
 BUILD_DATE=$(date +%Y-%m-%d)
-# fixed name, so the release link …/releases/latest/download/<name> always gets the newest
-BUNDLE="YiJingNavigatingChange-x86_64.flatpak"
+BUNDLE="YiJingNavigatingChange-${VERSION}-x86_64.flatpak"
 WORKDIR="yijing_fp"
 REPO="yijing_repo"
 
