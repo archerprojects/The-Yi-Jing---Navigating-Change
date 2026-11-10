@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ══════════════════════════════════════════════════════════════════════════════
 # The YiJing (I Ching) — Navigating Change — Flatpak Build Script
-# Script version 1.1.0 — Monday 2 November 2026
+# Script version 1.1.0 — Tuesday 10 November 2026
 # Run from build directory:
 #   ./build.sh            build the .flatpak bundle only (default — repo-safe)
 #   ./build.sh --install  build, then install to the user Flatpak
@@ -32,7 +32,8 @@ done
 VERSION=$(grep 'APP_VER' yijing_main.py | head -1 | grep -oP '"\K[^"]+')
 APP_ID=$(grep 'APP_ID' yijing_main.py | head -1 | grep -oP '"\K[^"]+')
 BUILD_DATE=$(date +%Y-%m-%d)
-BUNDLE="YiJingNavigatingChange-${VERSION}-x86_64.flatpak"
+# fixed name, so the release link …/releases/latest/download/<name> always gets the newest
+BUNDLE="YiJingNavigatingChange-x86_64.flatpak"
 WORKDIR="yijing_fp"
 REPO="yijing_repo"
 
@@ -148,7 +149,7 @@ flatpak build-bundle --arch=x86_64 \
     "${BUNDLE}" \
     "$APP_ID" stable
 
-echo "Bundle: ${BUNDLE}"
+echo "Bundle: ${BUNDLE} (version ${VERSION})"
 
 # ── Step 4: Install and run (only with --install / --run) ─────────────────────
 if [ "$INSTALL" -eq 1 ]; then
